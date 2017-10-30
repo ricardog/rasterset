@@ -116,14 +116,14 @@ class RasterSet(object):
 
   def to_dot(self):
     import pdb; pdb.set_trace()
-    print "digraph: LogAbund {"
-    print "node [fontname: Palatino, fontsize: 24];"
+    print("digraph: LogAbund {")
+    print("node [fontname: Palatino, fontsize: 24];")
     for idx, level in enumerate(self._levels):
       for name in level:
-        print '"%s" [];' % name
+        print('"%s" [];' % name)
         for dep in self[name].inputs:
-          print '"%s" -> "%s"' % (dep, name)
-    print "}"
+          print('"%s" -> "%s"' % (dep, name))
+    print("}")
     
   
   def set_props(self, ctx):

@@ -35,7 +35,7 @@ class Raster(object):
       try:
         self._threadlocal.reader = rasterio.open(self._fname)
       except (SystemError, rasterio.errors.RasterioIOError), e:
-        print "Error: opening raster '%s' for %s" % (self._fname, self.name)
+        print("Error: opening raster '%s' for %s" % (self._fname, self.name))
         raise SystemError("Error: opening raster '%s' for %s" %
                           (self._fname, self.name))
     return self._threadlocal.reader
@@ -77,8 +77,8 @@ class Raster(object):
     win = window_inset(self.window, window)
     try:
       data = self.reader.read(self._band, window=win, masked=True)
-    except IndexError, e:
-      print "Error: reading band %d from %s" % (self._band, self._fname)
+    except IndexError as e:
+      print("Error: reading band %d from %s" % (self._band, self._fname))
       raise IndexError("Error: reading band %d from %s" %
                        (self._band, self._fname))
     ## HPD raster sometimes has NODATA values that leak.
