@@ -37,7 +37,7 @@ class EvalContext(object):
 
   @staticmethod
   def check_rasters(columns):
-    readers = map(lambda c: c.reader, columns)
+    readers = tuple(map(lambda c: c.reader, columns))
 
     first = readers[0]
     first_res = first.res
@@ -105,7 +105,7 @@ class EvalContext(object):
   
   @staticmethod
   def find_bounds(columns):
-    sources = map(lambda c: c.reader, columns)
+    sources = list(map(lambda c: c.reader, columns))
     first = sources.pop(0)
     bounds = list(tuple(first.bounds))
 
@@ -134,9 +134,9 @@ class EvalContext(object):
   
   def block_windows(self):
     y_inc, x_inc = self._block_shape
-    for j in xrange(0, self.height, y_inc):
+    for j in range(0, self.height, y_inc):
       j2 = min(j + y_inc, self.height)
-      for i in xrange(0, self.width, x_inc):
+      for i in range(0, self.width, x_inc):
         i2 = min(i + x_inc, self.width)
         yield ((j, j2), (i, i2))
 

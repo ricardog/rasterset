@@ -1,6 +1,7 @@
 
 import click
 import concurrent.futures
+from functools import reduce
 import math
 import multiprocessing
 import numpy as np
@@ -108,9 +109,9 @@ class RasterSet(object):
     for col in self._data.values():
       visit(col)
 
-    ordered = sorted(order.iteritems(), key=lambda kv: (kv[1], kv[0]))
+    ordered = sorted(order.items(), key=lambda kv: (kv[1], kv[0]))
     nlevels = ordered[-1][1]
-    self._levels = [[] for x in xrange(nlevels + 1)]
+    self._levels = [[] for x in range(nlevels + 1)]
     for k, v in ordered:
       self._levels[v].append(k)
 
@@ -148,7 +149,7 @@ class RasterSet(object):
 
   def dropna(self, df):
     namask = reduce(np.logical_or, map(ma.getmask, df.values()),
-                    np.zeros(df.values()[0].shape))
+                    np.zeros(tuple(df.values())[0].shape))
     for key in df.keys():
       df[key].mask = namask
       df[key] = df[key].compressed()
