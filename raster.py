@@ -34,7 +34,7 @@ class Raster(object):
     if getattr(self._threadlocal, 'reader', None) is None:
       try:
         self._threadlocal.reader = rasterio.open(self._fname)
-      except (SystemError, rasterio.errors.RasterioIOError), e:
+      except (SystemError, rasterio.errors.RasterioIOError) as e:
         print("Error: opening raster '%s' for %s" % (self._fname, self.name))
         raise SystemError("Error: opening raster '%s' for %s" %
                           (self._fname, self.name))

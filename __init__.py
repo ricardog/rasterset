@@ -7,9 +7,9 @@ import numpy as np
 import numpy.ma as ma
 import rasterio
 
-from evalcontext import EvalContext
-from raster import Raster
-from rastercol import RasterCol
+from .evalcontext import EvalContext
+from .raster import Raster
+from .rastercol import RasterCol
 
 class RasterSet(object):
   def __init__(self, data=None, shapes=None, bbox=None, mask=None,
@@ -108,7 +108,7 @@ class RasterSet(object):
     for col in self._data.values():
       visit(col)
 
-    ordered = sorted(order.iteritems(), key=lambda (k,v): (v,k))
+    ordered = sorted(order.iteritems(), key=lambda kv: (kv[1], kv[0]))
     nlevels = ordered[-1][1]
     self._levels = [[] for x in xrange(nlevels + 1)]
     for k, v in ordered:

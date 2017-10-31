@@ -1,5 +1,5 @@
 
-from raster import Raster
+from .raster import Raster
 
 class RasterCol(object):
   def __init__(self, name, obj, mask, bbox):
