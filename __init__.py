@@ -232,7 +232,7 @@ class RasterSet(object):
     # Increasing the clock size helps, at the cost of higher memory
     # utilization.
     num_workers = 1
-    ctx.msgs = True
+    ctx.msgs = False
 
     def jobs():
       for win in ctx.block_windows():
