@@ -185,17 +185,25 @@ class RasterSet(object):
       import pd_utils
       pd_utils.save_pandas('evaled.pyd', dframe)
     if False:
+      import pandas as pd
+      dframe = pd.DataFrame(df)
+      import projections.pd_utils as pd_utils
       df2 = {}
+      df3 = {}
       for k in df.keys():
         tmp = ma.empty_like(namask, dtype=np.float32)
         tmp.mask = namask
         tmp[~namask] = df[k]
         df2[k] = tmp#.reshape(-1)
-      pdb.set_trace()
-      import pandas as pd
-      dframe = pd.DataFrame(df2)
-      import pd_utils
-      pd_utils.save_pandas('1950.pyd', dframe)
+        df3[k] = df2[k][75:135, 880]
+      dframe = pd.DataFrame(df3)
+      #pd_utils.save_pandas('evaled.pyd', dframe)
+      dframe.to_csv('evaled.csv')
+      import pdb; pdb.set_trace()
+      #import pandas as pd
+      #dframe = pd.DataFrame(df2)
+      #import pd_utils
+      #pd_utils.save_pandas('1950.pyd', dframe)
     return data
 
   def eval(self, what, quiet=False, args={}):
