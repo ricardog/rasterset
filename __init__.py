@@ -225,7 +225,7 @@ class RasterSet(object):
       with rasterio.open(path, 'w', **meta) as dst:
         with click.progressbar(ctx.block_windows(), iters) as bar:
           for win in bar:
-            height, width = window_shape(win)
+            height, width = (win[0][1] - win[0][0], win[1][1] - win[1][0])
             out = self._eval(ctx, win)
             dst.write(out.filled(meta['nodata']), window = win, indexes = 1)
             ctx.msgs = False
@@ -239,7 +239,7 @@ class RasterSet(object):
     # high for this problem because threads start competing for the GIL.
     # Increasing the clock size helps, at the cost of higher memory
     # utilization.
-    num_workers = 1
+    num_workers = multiprocessing.cpu_count()
     ctx.msgs = False
 
     def jobs():
