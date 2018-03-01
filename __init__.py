@@ -114,6 +114,8 @@ class RasterSet(object):
     self._levels = [[] for x in range(nlevels + 1)]
     for k, v in ordered:
       self._levels[v].append(k)
+    self._levels[0].sort(key=lambda a: -1 if isinstance(self._data[a].source,
+                                                        Raster) else 1)
 
   def to_dot(self):
     import pdb; pdb.set_trace()
