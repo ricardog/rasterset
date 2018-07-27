@@ -18,7 +18,6 @@ class Raster(object):
     self._threadlocal = threading.local()
     self._band = band
     self._window = None
-    self._affine = None
     self._mask = None
 
   @property
@@ -47,14 +46,6 @@ class Raster(object):
   @window.setter
   def window(self, window):
     self._window = window
-
-  @property
-  def affine(self):
-    return self._affine
-
-  @affine.setter
-  def affine(self, affine):
-    self._affine = affine
 
   @property
   def mask(self):
