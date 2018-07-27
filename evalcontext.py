@@ -162,13 +162,25 @@ class EvalContext(object):
   def bounds(self):
     return self._bounds
 
+  @bounds.setter
+  def bounds(self, bounds):
+    self._bounds = bounds
+
   @property
   def affine(self):
     return self._affine
 
+  @affine.setter
+  def affine(self, affine):
+    self._affine = affine
+
   @property
   def shape(self):
     return self._shape
+
+  @shape.setter
+  def shape(self, shape):
+    self._shape = shape
 
   @property
   def height(self):
@@ -181,6 +193,10 @@ class EvalContext(object):
   @property
   def mask(self):
     return self._mask
+
+  @mask.setter
+  def mask(self, mask):
+    self._mask = mask
 
   @property
   def what(self):
