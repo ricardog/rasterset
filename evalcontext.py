@@ -63,6 +63,13 @@ class EvalContext(object):
 
   @staticmethod
   def check_rasters(columns):
+    def check_alignment(src):
+      x_off = src.affine[2] % src.affine[0]
+      y_off = src.affine[5] % abs(src.affine[4])
+      xx = (x_off < 1e-10 or (abs(x_off - src.affine[0]) < 1e-10))
+      yy = (y_off < 1e-10 or (abs(y_off - abs(src.affine[4])) < 1e-10))
+      return xx and yy
+
     readers = tuple(map(lambda c: c.reader, columns))
 
     first = readers[0]
@@ -82,6 +89,10 @@ class EvalContext(object):
         raise RuntimeError('%s: resolution mismatch (%s != %s)' % (reader.name,
                                                                    first_res,
                                                                    reader.res))
+    for col in columns:
+      if not check_alignment(col.reader):
+        print('WARNING: raster %s has unaligned pixels' % col.name)
+
     return first_res, first_crs
 
   @staticmethod
