@@ -55,7 +55,7 @@ class EvalContext(object):
     # Set the affine transform and shape for the output
     self._affine = self.sources[0].reader.window_transform(self.sources[0].window)
     self._shape = window_shape(self.sources[0].window)
-    if self.mask:
+    if self.mask is not None:
       assert self.shape == self.mask.shape
     
     # Compute minimal block shape that covers all block shapes
