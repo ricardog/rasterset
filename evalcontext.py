@@ -43,7 +43,7 @@ class EvalContext(object):
       win = ((math.floor(yl), math.ceil(yh)),
              (math.floor(xl), math.ceil(xh)))
       src.window = src.reader.window(*self.bounds)
-      assert src.window == win
+      #assert src.window == win
       #src.affine = src.reader.window_transform(src.window)
 
     # The number of rows and columns must be the same for all rasters.
