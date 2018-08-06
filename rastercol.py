@@ -1,5 +1,6 @@
 
 from .raster import Raster
+from ..simpleexpr import SimpleExpr
 
 class RasterCol(object):
   def __init__(self, name, obj, mask, bbox):
@@ -48,7 +49,7 @@ class RasterCol(object):
     self._series = series
 
   def eval(self, df, window=None):
-    if isinstance(self._obj, Raster):
+    if isinstance(self._obj, (Raster, SimpleExpr)):
       return self._eval(df, window)
     else:
       return self._eval(df)
