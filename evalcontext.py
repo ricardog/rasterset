@@ -7,7 +7,7 @@ import rasterio.features
 
 def window_shape(win):
   #return (win[0][1] - win[0][0], win[1][1] - win[1][0])
-  return (win.height, win.width)
+  return (math.ceil(win.height), math.ceil(win.width))
 
 class EvalContext(object):
   def __init__(self, rasterset, what, crop=True):
