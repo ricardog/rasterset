@@ -6,7 +6,8 @@ import rasterio
 import rasterio.features
 
 def window_shape(win):
-  return (win[0][1] - win[0][0], win[1][1] - win[1][0])
+  #return (win[0][1] - win[0][0], win[1][1] - win[1][0])
+  return (math.ceil(win.height), math.ceil(win.width))
 
 class EvalContext(object):
   def __init__(self, rasterset, what, crop=True):
@@ -16,7 +17,7 @@ class EvalContext(object):
     self._msgs = True
     self._mask = None
     self._bounds = None
-    self._affine = None
+    self._transform = None
     self._nodata = -9999
     self._needed = sorted(rasterset.find_needed(what),
                           key=lambda x: x.lower())
@@ -29,7 +30,7 @@ class EvalContext(object):
     # Compute reading window and affine transform for every raster
     self.bounds = self.find_bounds(self.sources)
 
-    # Update bounds, affine, and shape if mask given
+    # Update bounds, transform, and shape if mask given
     if rasterset.shapes or rasterset.mask:
       self.bounds, self.mask = self.apply_mask(rasterset.shapes,
                                                rasterset.mask,
@@ -38,22 +39,26 @@ class EvalContext(object):
 
     # Set the window we are interested in for all sources
     for src in self.sources:
-      xl, yh = ~src.reader.affine * (self.bounds[0], self.bounds[1])
-      xh, yl = ~src.reader.affine * (self.bounds[2], self.bounds[3])
-      win = ((math.floor(yl), math.ceil(yh)),
-             (math.floor(xl), math.ceil(xh)))
-      src.window = src.reader.window(*self.bounds)
+      xl, yh = ~src.reader.transform * (self.bounds[0], self.bounds[1])
+      xh, yl = ~src.reader.transform * (self.bounds[2], self.bounds[3])
+      #win = src.reader.window(*self.bounds).toranges()
+      win = src.reader.window(*self.bounds)
+      #win = ((math.floor(win[0][0]), math.ceil(win[0][1])),
+      #       (math.floor(win[1][0]), math.ceil(win[1][1])))
+      src.window = win
       #assert src.window == win
-      #src.affine = src.reader.window_transform(src.window)
+      #src.transform = src.reader.window_transform(src.window)
 
     # The number of rows and columns must be the same for all rasters.
     # Trigger and assert if there is more than one window shape in
     # the raster set.
     shapes = [window_shape(src.window) for src in self.sources]
+    if len(set(shapes)) > 1:
+      import pdb; pdb.set_trace()
     assert len(set(shapes)) == 1, 'More than one window size'
 
     # Set the affine transform and shape for the output
-    self._affine = self.sources[0].reader.window_transform(self.sources[0].window)
+    self._transform = self.sources[0].reader.window_transform(self.sources[0].window)
     self._shape = window_shape(self.sources[0].window)
     if self.mask is not None:
       assert self.shape == self.mask.shape
@@ -64,10 +69,10 @@ class EvalContext(object):
   @staticmethod
   def check_rasters(columns):
     def check_alignment(src):
-      x_off = src.affine[2] % src.affine[0]
-      y_off = src.affine[5] % abs(src.affine[4])
-      xx = (x_off < 1e-10 or (abs(x_off - src.affine[0]) < 1e-10))
-      yy = (y_off < 1e-10 or (abs(y_off - abs(src.affine[4])) < 1e-10))
+      x_off = src.transform[2] % src.transform[0]
+      y_off = src.transform[5] % abs(src.transform[4])
+      xx = (x_off < 1e-10 or (abs(x_off - src.transform[0]) < 1e-10))
+      yy = (y_off < 1e-10 or (abs(y_off - abs(src.transform[4])) < 1e-10))
       return xx and yy
 
     readers = tuple(map(lambda c: c.reader, columns))
@@ -77,9 +82,10 @@ class EvalContext(object):
     first_crs = first.crs
     # Verify all rasters either have same CRS or don't have a CRS
     for reader in readers:
-      if first_crs.to_string() == '' and reader.crs.to_string() != '':
+      if ((first_crs is None or first_crs.to_string() == '') and
+	  reader.crs.to_string() != ''):
         first_crs = reader.crs
-      elif reader.crs.to_string() == '':
+      elif reader.crs is None or reader.crs.to_string() == '':
         pass
       elif first_crs != reader.crs:
         raise RuntimeError('%s: crs mismatch (%s != %s)' % (reader.name,
@@ -119,12 +125,12 @@ class EvalContext(object):
     return bounds
     
   @staticmethod
-  def compute_mask(shapes, all_touched, affine, shape):
+  def compute_mask(shapes, all_touched, transform, shape):
     if shapes is None:
       return
     gshapes = [feature["geometry"] for feature in shapes]
     mask = rasterio.features.geometry_mask(gshapes,
-                                           transform = affine,
+                                           transform = transform,
                                            invert = False,
                                            out_shape = shape,
                                            all_touched = all_touched)
@@ -144,10 +150,10 @@ class EvalContext(object):
       bounds = self.bounds
 
     window = self.sources[0].reader.window(*bounds)
-    affine = self.sources[0].reader.window_transform(window)
+    transform = self.sources[0].reader.window_transform(window)
     shape = window_shape(window)
     if not mask_ds:
-      mask = self.compute_mask(shapes, all_touched, affine, shape)
+      mask = self.compute_mask(shapes, all_touched, transform, shape)
     else:
       win = mask_ds.window(*bounds)
       data = mask_ds.read(1, masked=True, window=win)
@@ -179,7 +185,7 @@ class EvalContext(object):
                  'nodata': self._nodata})
     meta.update(args)
     meta.update({'count': 1, 'crs': self._crs,
-                 'transform': self.affine,
+                 'transform': self.transform,
                  'height': self.height, 'width': self.width,
                  'dtype': np.float32})
     return meta
@@ -197,12 +203,12 @@ class EvalContext(object):
     self._bounds = bounds
 
   @property
-  def affine(self):
-    return self._affine
+  def transform(self):
+    return self._transform
 
-  @affine.setter
-  def affine(self, affine):
-    self._affine = affine
+  @transform.setter
+  def transform(self, transform):
+    self._transform = transform
 
   @property
   def shape(self):
