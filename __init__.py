@@ -7,6 +7,7 @@ import multiprocessing
 import numpy as np
 import numpy.ma as ma
 import rasterio
+from tqdm import tqdm
 
 from .evalcontext import EvalContext
 from .raster import Raster
@@ -250,6 +251,8 @@ class RasterSet(object):
 
     def compute(win):
       return self._eval(ctx, win)
+
+    bar = tqdm(leave=True, total=ctx.height, desc="projecting")
     
     with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True, GDAL_CACHEMAX=256):
       with rasterio.open(path, 'w', **meta) as dst:
@@ -260,5 +263,8 @@ class RasterSet(object):
           }
           for future in concurrent.futures.as_completed(future_to_window):
             win = future_to_window[future]
+            rows = win[0][1] - win[0][0]
+            bar.update(rows)
             out = future.result()
             dst.write(out.filled(meta['nodata']), window = win, indexes = 1)
+    bar.close()
