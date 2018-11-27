@@ -151,7 +151,7 @@ class EvalContext(object):
     else:
       win = mask_ds.window(*bounds)
       data = mask_ds.read(1, masked=True, window=win)
-      mask = ma.where(data == maskval, True, False)
+      mask = ma.where(data == maskval, True, False).filled(True)
     return bounds, mask
 
   @staticmethod
