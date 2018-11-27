@@ -252,8 +252,7 @@ class RasterSet(object):
     def compute(win):
       return self._eval(ctx, win)
 
-    bar = tqdm(leave=True, total=ctx.height, desc="projecting")
-    
+    bar = tqdm(leave=True, total=ctx.height, desc=what)
     with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True, GDAL_CACHEMAX=256):
       with rasterio.open(path, 'w', **meta) as dst:
         with concurrent.futures.ThreadPoolExecutor(
