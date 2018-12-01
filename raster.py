@@ -7,6 +7,11 @@ import threading
 
 def window_inset(win1, win2):
   if win2:
+    roff = round(win1.row_off)
+    coff = round(win1.col_off)
+    width = round(win1.width)
+    height = round(win1.height)
+    win1 = ((roff, roff + height), (coff, coff + width))
     return ((win1[0][0] + win2[0][0], min(win1[0][0] + win2[0][1], win1[0][1])),
             (win1[1][0] + win2[1][0], min(win1[1][0] + win2[1][1], win1[1][1])))
   return win1

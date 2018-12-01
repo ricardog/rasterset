@@ -7,7 +7,7 @@ import rasterio.features
 
 def window_shape(win):
   #return (win[0][1] - win[0][0], win[1][1] - win[1][0])
-  return (math.ceil(win.height), math.ceil(win.width))
+  return (win.height, win.width)
 
 class EvalContext(object):
   def __init__(self, rasterset, what, crop=True):
@@ -41,13 +41,10 @@ class EvalContext(object):
     for src in self.sources:
       xl, yh = ~src.reader.transform * (self.bounds[0], self.bounds[1])
       xh, yl = ~src.reader.transform * (self.bounds[2], self.bounds[3])
-      #win = src.reader.window(*self.bounds).toranges()
       win = src.reader.window(*self.bounds)
-      #win = ((math.floor(win[0][0]), math.ceil(win[0][1])),
-      #       (math.floor(win[1][0]), math.ceil(win[1][1])))
+      win = rasterio.windows.Window(round(win.col_off), round(win.row_off),
+                                    round(win.width), round(win.height))
       src.window = win
-      #assert src.window == win
-      #src.transform = src.reader.window_transform(src.window)
 
     # The number of rows and columns must be the same for all rasters.
     # Trigger and assert if there is more than one window shape in
@@ -83,7 +80,7 @@ class EvalContext(object):
     # Verify all rasters either have same CRS or don't have a CRS
     for reader in readers:
       if ((first_crs is None or first_crs.to_string() == '') and
-	  reader.crs.to_string() != ''):
+	  (reader.crs is not None and reader.crs.to_string() != '')):
         first_crs = reader.crs
       elif reader.crs is None or reader.crs.to_string() == '':
         pass
@@ -156,6 +153,8 @@ class EvalContext(object):
       mask = self.compute_mask(shapes, all_touched, transform, shape)
     else:
       win = mask_ds.window(*bounds)
+      win = rasterio.windows.Window(round(win.col_off), round(win.row_off),
+                                    round(win.width), round(win.height))
       data = mask_ds.read(1, masked=True, window=win)
       mask = ma.where(data == maskval, True, False).filled(True)
     return bounds, mask
