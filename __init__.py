@@ -185,8 +185,8 @@ class RasterSet(object):
     if False:
       import pandas as pd
       dframe = pd.DataFrame(df)
-      import pd_utils
-      pd_utils.save_pandas('evaled.pyd', dframe)
+      #import projections.pd_utils as pd_utils
+      dframe.to_pickle('evaled.pyd')
     if False:
       import pandas as pd
       dframe = pd.DataFrame(df)
