@@ -78,7 +78,8 @@ class Raster(object):
       raise IndexError("Error: reading band %d from %s" %
                        (self._band, self._fname))
     ## HPD raster sometimes has NODATA values that leak.
-    data = ma.where(data < -1e20, np.nan, data)
+    if self.dtype == 'float32' or self.dtype == 'float64':
+      data = ma.where(data < -1e20, np.nan, data)
     if self.mask is not None:
       if window:
         data.mask = data.mask | self.mask[window[0][0]:window[0][1],
