@@ -74,6 +74,8 @@ class EvalContext(object):
 
     readers = tuple(map(lambda c: c.reader, columns))
 
+    assert readers, "No rasters of know size in input set"
+
     first = readers[0]
     first_res = first.res
     first_crs = first.crs
