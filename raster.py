@@ -86,3 +86,6 @@ class Raster(object):
       else:
         data.mask = data.mask | self.mask
     return data
+
+  def __repr__(self):
+    return 'file:///' + self._fname
