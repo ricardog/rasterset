@@ -182,7 +182,7 @@ class EvalContext(object):
 
   def meta(self, args={}):
     meta = self.sources[0].reader.meta.copy()
-    meta.update({'driver': 'GTiff', 'compress': 'lzw', 'predictor': 2,
+    meta.update({'driver': 'GTiff', 'compress': 'lzw', 'predictor': 3,
                  'nodata': self._nodata})
     meta.update(args)
     meta.update({'count': 1, 'crs': self._crs,
