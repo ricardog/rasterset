@@ -10,7 +10,7 @@ def window_shape(win):
   return (win.height, win.width)
 
 class EvalContext(object):
-  def __init__(self, rasterset, what, crop=True):
+  def __init__(self, rasterset, what, crop=True, bbox=None):
     self._rasterset = rasterset
     self._what = what
     self._crop = crop
@@ -28,7 +28,9 @@ class EvalContext(object):
     # TODO:: scale rasters appropriatelly
     self._res, self._crs = self.check_rasters(self.sources)
     # Compute reading window and affine transform for every raster
-    self.bounds = self.find_bounds(self.sources)
+    if bbox is None:
+      bbox = (-180.0, -90.0, 180.0, 90)
+    self.bounds = self.find_bounds(bbox, self.sources)
 
     # Update bounds, transform, and shape if mask given
     if rasterset.shapes or rasterset.mask:
@@ -101,9 +103,7 @@ class EvalContext(object):
     return first_res, first_crs
 
   @staticmethod
-  def find_bounds(sources):
-    bounds = (-180.0, -90.0, 180.0, 90)
-
+  def find_bounds(bounds, sources):
     for src in sources:
       src_bounds = src.reader.bounds
       if rasterio.coords.disjoint_bounds(bounds, src_bounds):
@@ -112,6 +112,7 @@ class EvalContext(object):
                 max(bounds[1], src_bounds[1]),
                 min(bounds[2], src_bounds[2]),
                 min(bounds[3], src_bounds[3]))
+    print(bounds)
     return bounds
 
   @staticmethod

@@ -210,7 +210,7 @@ class RasterSet(object):
     return data
 
   def eval(self, what, quiet=False, args={}):
-    ctx = EvalContext(self, what, crop=self.crop)
+    ctx = EvalContext(self, what, crop=self.crop, bbox=self.bbox)
     if quiet:
       ctx.msgs = False
     self.set_props(ctx)
@@ -235,7 +235,7 @@ class RasterSet(object):
 
 
   def write(self, what, path, crop=True, args={}):
-    ctx = EvalContext(self, what)
+    ctx = EvalContext(self, what, crop, self.bbox)
     self.set_props(ctx)
     meta = ctx.meta(args)
     # by default ThreadPoolExecutor uses num_cpus() * 5 but that's too
