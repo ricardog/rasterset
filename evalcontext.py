@@ -112,7 +112,6 @@ class EvalContext(object):
                 max(bounds[1], src_bounds[1]),
                 min(bounds[2], src_bounds[2]),
                 min(bounds[3], src_bounds[3]))
-    print(bounds)
     return bounds
 
   @staticmethod
