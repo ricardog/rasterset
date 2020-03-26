@@ -53,3 +53,6 @@ class RasterCol(object):
       return self._eval(df, window)
     else:
       return self._eval(df)
+
+  def __repr__(self):
+    return self._obj.__repr__()
