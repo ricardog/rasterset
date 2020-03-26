@@ -267,3 +267,6 @@ class RasterSet(object):
             out = future.result()
             dst.write(out.filled(meta['nodata']), window = win, indexes = 1)
     bar.close()
+
+  def __repr__(self):
+    return '\n'.join([self._data[s].__repr__() for s in self.keys()])
