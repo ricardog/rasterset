@@ -1,7 +1,9 @@
 
 import click
+from collections import OrderedDict
 import concurrent.futures
 from functools import reduce
+import asciitree
 import math
 import multiprocessing
 import numpy as np
@@ -270,3 +272,19 @@ class RasterSet(object):
 
   def __repr__(self):
     return '\n'.join([self._data[s].__repr__() for s in self.keys()])
+
+  
+  def tree(self, what):
+    def dfs(me):
+      ret = OrderedDict()
+      for sym in sorted(me.inputs):
+        if sym in self and self[sym].inputs:
+          ret[sym] = dfs(self[sym])
+        else:
+          ret[sym] = {}
+      return ret
+
+    deps = dfs(self[what])
+    tr = asciitree.LeftAligned()
+    return tr(deps)
+  
