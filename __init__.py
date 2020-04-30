@@ -14,6 +14,7 @@ from tqdm import tqdm
 from .evalcontext import EvalContext
 from .raster import Raster
 from .rastercol import RasterCol
+from ..simpleexpr import SimpleExpr
 
 class RasterSet(object):
   def __init__(self, data=None, shapes=None, bbox=None, mask=None,
@@ -32,7 +33,7 @@ class RasterSet(object):
     elif isinstance(data, dict):
       self._data = {}
       for k, v in data.items():
-        self._data[k] = RasterCol(k, v, None, bbox)
+        self.__setitem__(k, v)
     else:
       raise RuntimeError('unknown data source')
 
@@ -42,6 +43,14 @@ class RasterSet(object):
     raise KeyError(key)
 
   def __setitem__(self, key, value):
+    # FIXME: this generates an error when computing order.
+    #if isinstance(value, str) and value in self._data:
+    #  self._data[key] = self._data[value]
+    #  return
+    if isinstance(value, (int, float)):
+      value = SimpleExpr(key, value)
+    elif isinstance(value, str):
+      value = SimpleExpr(key, value)
     self._data[key] = RasterCol(key, value, self.mask, self.bbox)
     self._levels = []
 
@@ -185,6 +194,7 @@ class RasterSet(object):
     data.mask = namask
     data[~namask] = df[ctx.what]
     if False:
+      import pdb; pdb.set_trace()
       import pandas as pd
       dframe = pd.DataFrame(df)
       #import projections.pd_utils as pd_utils
