@@ -195,6 +195,7 @@ class RasterSet(object):
     data.mask = namask
     data[~namask] = df[ctx.what]
     if False:
+      from rasterio.plot import show
       import pdb; pdb.set_trace()
       import pandas as pd
       dframe = pd.DataFrame(df)
@@ -300,7 +301,7 @@ class RasterSet(object):
           ret[sym] = {}
       return ret
 
-    deps = dfs(self[what])
+    deps = {what: dfs(self[what])}
     tr = asciitree.LeftAligned()
     return tr(deps)
   
