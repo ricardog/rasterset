@@ -37,6 +37,12 @@ class RasterCol(object):
     return isinstance(self._obj, Raster)
 
   @property
+  def is_constant(self):
+    if isinstance(self._obj, SimpleExpr):
+      return self._obj.is_constant
+    return False
+
+  @property
   def source(self):
     return self._obj
 
