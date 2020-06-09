@@ -62,3 +62,7 @@ class RasterCol(object):
 
   def __repr__(self):
     return self._obj.__repr__()
+
+  def __str__(self):
+    return self._obj.__str__()
+  

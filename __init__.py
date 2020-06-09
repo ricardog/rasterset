@@ -1,13 +1,14 @@
 
+import asciitree
 import click
 from collections import OrderedDict
 import concurrent.futures
 from functools import reduce
-import asciitree
 import math
 import multiprocessing
 import numpy as np
 import numpy.ma as ma
+from pathlib import Path
 import rasterio
 from tqdm import tqdm
 
@@ -290,7 +291,12 @@ class RasterSet(object):
       for sym in sorted(me.inputs):
         if sym in self and self[sym].inputs:
           ret[sym] = dfs(self[sym])
+        elif sym in self and self[sym].is_raster:
+          ret[sym] = {self[sym].source.__str__(): {}}
+        elif sym in self and self[sym].is_constant is not None:
+          ret[sym] = {self[sym].source.is_constant: {}}
         else:
+          import pdb; pdb.set_trace()
           ret[sym] = {}
       return ret
 

@@ -1,9 +1,10 @@
 import numpy as np
 import numpy.ma as ma
+from pathlib import Path
 import rasterio
 import rasterio.errors
 import threading
-
+from urllib.parse import urlparse
 
 def window_inset(win1, win2):
   if win2:
@@ -24,6 +25,7 @@ class Raster(object):
     self._band = band
     self._window = None
     self._mask = None
+    self._str = None
 
   @property
   def name(self):
@@ -86,4 +88,27 @@ class Raster(object):
     return data
 
   def __repr__(self):
-    return 'file:///' + self._fname
+    parts = urlparse(self._fname)
+    scheme = parts.scheme or None
+    if parts.scheme is None:
+      path = Path(parts.path)
+      if path.is_absolute():
+        return path.as_uri()
+      return self._fname
+    return self._fname
+  
+  def __str__(self):
+    if self._str is None:
+      parts = urlparse(self._fname)
+      path = Path(parts.path)
+      scheme = parts.scheme or 'file'
+      if len(path.parts) > 2:
+        short = Path(*('...', ) + path.parts[-2:])
+      else:
+        short = path
+      if parts.netloc == '':
+        self._str = f'{scheme}://{short}'
+      else:
+        self._str = f'{scheme}://{parts.netloc}/{short}'
+    return self._str
+    
