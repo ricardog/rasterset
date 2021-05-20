@@ -5,244 +5,279 @@ import numpy.ma as ma
 import rasterio
 import rasterio.features
 
+
 def window_shape(win):
-  #return (win[0][1] - win[0][0], win[1][1] - win[1][0])
-  return (win.height, win.width)
+    # return (win[0][1] - win[0][0], win[1][1] - win[1][0])
+    return (win.height, win.width)
+
 
 class EvalContext(object):
-  def __init__(self, rasterset, what, crop=True, bbox=None):
-    self._rasterset = rasterset
-    self._what = what
-    self._crop = crop
-    self._msgs = True
-    self._mask = None
-    self._bounds = None
-    self._transform = None
-    self._nodata = -9999
-    self._needed = sorted(rasterset.find_needed(what),
-                          key=lambda x: x.lower())
-    self._sources = [rasterset[x].source for x in
-                     filter(lambda c: rasterset[c].is_raster, self._needed)]
+    def __init__(self, rasterset, what, crop=True, bbox=None):
+        self._rasterset = rasterset
+        self._what = what
+        self._crop = crop
+        self._msgs = True
+        self._mask = None
+        self._bounds = None
+        self._transform = None
+        self._nodata = -9999
+        self._needed = sorted(rasterset.find_needed(what), key=lambda x: x.lower())
+        self._sources = [
+            rasterset[x].source
+            for x in filter(lambda c: rasterset[c].is_raster, self._needed)
+        ]
 
-    # Check all rasters have the same resolution.
-    # TODO:: scale rasters appropriatelly
-    self._res, self._crs = self.check_rasters(self.sources)
-    # Compute reading window and affine transform for every raster
-    if bbox is None:
-      bbox = (-180.0, -90.0, 180.0, 90)
-    self.bounds = self.find_bounds(bbox, self.sources)
+        # Check all rasters have the same resolution.
+        # TODO:: scale rasters appropriatelly
+        self._res, self._crs = self.check_rasters(self.sources)
+        # Compute reading window and affine transform for every raster
+        if bbox is None:
+            bbox = (-180.0, -90.0, 180.0, 90)
+        self.bounds = self.find_bounds(bbox, self.sources)
 
-    # Update bounds, transform, and shape if mask given
-    if rasterset.shapes or rasterset.mask:
-      self.bounds, self.mask = self.apply_mask(rasterset.shapes,
-                                               rasterset.mask,
-                                               rasterset.maskval,
-                                               rasterset.all_touched)
+        # Update bounds, transform, and shape if mask given
+        if rasterset.shapes or rasterset.mask:
+            self.bounds, self.mask = self.apply_mask(
+                rasterset.shapes,
+                rasterset.mask,
+                rasterset.maskval,
+                rasterset.all_touched,
+            )
 
-    # Set the window we are interested in for all sources
-    for src in self.sources:
-      xl, yh = ~src.reader.transform * (self.bounds[0], self.bounds[1])
-      xh, yl = ~src.reader.transform * (self.bounds[2], self.bounds[3])
-      win = src.reader.window(*self.bounds)
-      win = rasterio.windows.Window(round(win.col_off), round(win.row_off),
-                                    round(win.width), round(win.height))
-      src.window = win
+        # Set the window we are interested in for all sources
+        for src in self.sources:
+            xl, yh = ~src.reader.transform * (self.bounds[0], self.bounds[1])
+            xh, yl = ~src.reader.transform * (self.bounds[2], self.bounds[3])
+            win = src.reader.window(*self.bounds)
+            win = rasterio.windows.Window(
+                round(win.col_off),
+                round(win.row_off),
+                round(win.width),
+                round(win.height),
+            )
+            src.window = win
 
-    # The number of rows and columns must be the same for all rasters.
-    # Trigger and assert if there is more than one window shape in
-    # the raster set.
-    shapes = [window_shape(src.window) for src in self.sources]
-    if len(set(shapes)) > 1:
-      import pdb; pdb.set_trace()
-    assert len(set(shapes)) == 1, 'More than one window size'
+        # The number of rows and columns must be the same for all rasters.
+        # Trigger and assert if there is more than one window shape in
+        # the raster set.
+        shapes = [window_shape(src.window) for src in self.sources]
+        if len(set(shapes)) > 1:
+            import pdb
 
-    # Set the affine transform and shape for the output
-    self._transform = self.sources[0].reader.window_transform(self.sources[0].window)
-    self._shape = window_shape(self.sources[0].window)
-    if self.mask is not None:
-      assert self.shape == self.mask.shape
-    
-    # Compute minimal block shape that covers all block shapes
-    self._block_shape = self.block_shape(self.sources)
+            pdb.set_trace()
+        assert len(set(shapes)) == 1, "More than one window size"
 
-  @staticmethod
-  def check_rasters(columns):
-    def check_alignment(src):
-      x_off = src.transform[2] % src.transform[0]
-      y_off = src.transform[5] % abs(src.transform[4])
-      xx = (x_off < 1e-10 or (abs(x_off - src.transform[0]) < 1e-10))
-      yy = (y_off < 1e-10 or (abs(y_off - abs(src.transform[4])) < 1e-10))
-      return xx and yy
+        # Set the affine transform and shape for the output
+        self._transform = self.sources[0].reader.window_transform(
+            self.sources[0].window
+        )
+        self._shape = window_shape(self.sources[0].window)
+        if self.mask is not None:
+            assert self.shape == self.mask.shape
 
-    readers = tuple(map(lambda c: c.reader, columns))
+        # Compute minimal block shape that covers all block shapes
+        self._block_shape = self.block_shape(self.sources)
 
-    assert readers, "No rasters of know size in input set"
+    @staticmethod
+    def check_rasters(columns):
+        def check_alignment(src):
+            x_off = src.transform[2] % src.transform[0]
+            y_off = src.transform[5] % abs(src.transform[4])
+            xx = x_off < 1e-10 or (abs(x_off - src.transform[0]) < 1e-10)
+            yy = y_off < 1e-10 or (abs(y_off - abs(src.transform[4])) < 1e-10)
+            return xx and yy
 
-    first = readers[0]
-    first_res = first.res
-    first_crs = first.crs
-    # Verify all rasters either have same CRS or don't have a CRS
-    for reader in readers:
-      if ((first_crs is None or first_crs.to_string() == '') and
-	  (reader.crs is not None and reader.crs.to_string() != '')):
-        first_crs = reader.crs
-      elif reader.crs is None or reader.crs.to_string() == '':
-        pass
-      elif first_crs != reader.crs:
-        raise RuntimeError('%s: crs mismatch (%s != %s)' % (reader.name,
-                                                            first_crs,
-                                                            reader.crs))
-      if not np.allclose(first_res, reader.res):
-        raise RuntimeError('%s: resolution mismatch (%s != %s)' % (reader.name,
-                                                                   first_res,
-                                                                   reader.res))
-    for col in columns:
-      if not check_alignment(col.reader):
-        print('WARNING: raster %s has unaligned pixels' % col.name)
+        readers = tuple(map(lambda c: c.reader, columns))
 
-    return first_res, first_crs
+        assert readers, "No rasters of know size in input set"
 
-  @staticmethod
-  def find_bounds(bounds, sources):
-    for src in sources:
-      src_bounds = src.reader.bounds
-      if rasterio.coords.disjoint_bounds(bounds, src_bounds):
-        raise ValueError("rasters do not intersect")
-      bounds = (max(bounds[0], src_bounds[0]),
+        first = readers[0]
+        first_res = first.res
+        first_crs = first.crs
+        # Verify all rasters either have same CRS or don't have a CRS
+        for reader in readers:
+            if (first_crs is None or first_crs.to_string() == "") and (
+                reader.crs is not None and reader.crs.to_string() != ""
+            ):
+                first_crs = reader.crs
+            elif reader.crs is None or reader.crs.to_string() == "":
+                pass
+            elif first_crs != reader.crs:
+                raise RuntimeError(
+                    "%s: crs mismatch (%s != %s)" % (reader.name, first_crs, reader.crs)
+                )
+            if not np.allclose(first_res, reader.res):
+                raise RuntimeError(
+                    "%s: resolution mismatch (%s != %s)"
+                    % (reader.name, first_res, reader.res)
+                )
+        for col in columns:
+            if not check_alignment(col.reader):
+                print("WARNING: raster %s has unaligned pixels" % col.name)
+
+        return first_res, first_crs
+
+    @staticmethod
+    def find_bounds(bounds, sources):
+        for src in sources:
+            src_bounds = src.reader.bounds
+            if rasterio.coords.disjoint_bounds(bounds, src_bounds):
+                raise ValueError("rasters do not intersect")
+            bounds = (
+                max(bounds[0], src_bounds[0]),
                 max(bounds[1], src_bounds[1]),
                 min(bounds[2], src_bounds[2]),
-                min(bounds[3], src_bounds[3]))
-    return bounds
+                min(bounds[3], src_bounds[3]),
+            )
+        return bounds
 
-  @staticmethod
-  def mask_bounds(shapes):
-    if shapes is None:
-      return None
-    all_bounds = [rasterio.features.bounds(shape) for shape in shapes]
-    minxs, minys, maxxs, maxys = zip(*all_bounds)
-    bounds = (min(minxs), min(minys), max(maxxs), max(maxys))
-    return bounds
-    
-  @staticmethod
-  def compute_mask(shapes, all_touched, transform, shape):
-    if shapes is None:
-      return
-    gshapes = [feature["geometry"] for feature in shapes]
-    mask = rasterio.features.geometry_mask(gshapes,
-                                           transform = transform,
-                                           invert = False,
-                                           out_shape = shape,
-                                           all_touched = all_touched)
-    return mask
+    @staticmethod
+    def mask_bounds(shapes):
+        if shapes is None:
+            return None
+        all_bounds = [rasterio.features.bounds(shape) for shape in shapes]
+        minxs, minys, maxxs, maxys = zip(*all_bounds)
+        bounds = (min(minxs), min(minys), max(maxxs), max(maxys))
+        return bounds
 
-  def apply_mask(self, shapes, mask_ds, maskval=1.0, all_touched=True):
-    if shapes:
-      mask_bounds = self.mask_bounds(shapes)
-    else:
-      mask_bounds = mask_ds.bounds
-    if rasterio.coords.disjoint_bounds(self.bounds, mask_bounds):
-      raise ValueError("rasters do not intersect mask")
-    if self._crop:
-      minxs, minys, maxxs, maxys = zip(self.bounds, mask_bounds)
-      bounds = (max(minxs), max(minys), min(maxxs), min(maxys))
-    else:
-      bounds = self.bounds
+    @staticmethod
+    def compute_mask(shapes, all_touched, transform, shape):
+        if shapes is None:
+            return
+        gshapes = [feature["geometry"] for feature in shapes]
+        mask = rasterio.features.geometry_mask(
+            gshapes,
+            transform=transform,
+            invert=False,
+            out_shape=shape,
+            all_touched=all_touched,
+        )
+        return mask
 
-    window = self.sources[0].reader.window(*bounds)
-    transform = self.sources[0].reader.window_transform(window)
-    shape = window_shape(window)
-    if not mask_ds:
-      mask = self.compute_mask(shapes, all_touched, transform, shape)
-    else:
-      win = mask_ds.window(*bounds)
-      win = rasterio.windows.Window(round(win.col_off), round(win.row_off),
-                                    round(win.width), round(win.height))
-      data = mask_ds.read(1, masked=True, window=win)
-      mask = ma.where(data == maskval, True, False).filled(True)
-    return bounds, mask
+    def apply_mask(self, shapes, mask_ds, maskval=1.0, all_touched=True):
+        if shapes:
+            mask_bounds = self.mask_bounds(shapes)
+        else:
+            mask_bounds = mask_ds.bounds
+        if rasterio.coords.disjoint_bounds(self.bounds, mask_bounds):
+            raise ValueError("rasters do not intersect mask")
+        if self._crop:
+            minxs, minys, maxxs, maxys = zip(self.bounds, mask_bounds)
+            bounds = (max(minxs), max(minys), min(maxxs), min(maxys))
+        else:
+            bounds = self.bounds
 
-  @staticmethod
-  def block_shape(sources):
-    block_shapes = [s.block_shape for s in sources]
-    ys, xs = zip(*block_shapes)
-    block_shape = (max(ys), max(xs))
-    blocks = set(block_shapes)
-    return block_shape
-  
-  def block_windows(self):
-    y_inc, x_inc = self._block_shape
-    for j in range(0, self.height, y_inc):
-      j2 = min(j + y_inc, self.height)
-      for i in range(0, self.width, x_inc):
-        i2 = min(i + x_inc, self.width)
-        yield ((j, j2), (i, i2))
+        window = self.sources[0].reader.window(*bounds)
+        transform = self.sources[0].reader.window_transform(window)
+        shape = window_shape(window)
+        if not mask_ds:
+            mask = self.compute_mask(shapes, all_touched, transform, shape)
+        else:
+            win = mask_ds.window(*bounds)
+            win = rasterio.windows.Window(
+                round(win.col_off),
+                round(win.row_off),
+                round(win.width),
+                round(win.height),
+            )
+            data = mask_ds.read(1, masked=True, window=win)
+            mask = ma.where(data == maskval, True, False).filled(True)
+        return bounds, mask
 
-  def need(self, what):
-    return what in self._needed
+    @staticmethod
+    def block_shape(sources):
+        block_shapes = [s.block_shape for s in sources]
+        ys, xs = zip(*block_shapes)
+        block_shape = (max(ys), max(xs))
+        blocks = set(block_shapes)
+        return block_shape
 
-  def meta(self, args={}):
-    meta = self.sources[0].reader.meta.copy()
-    meta.update({'driver': 'GTiff', 'compress': 'lzw', 'predictor': 3,
-                 'nodata': self._nodata})
-    meta.update(args)
-    meta.update({'count': 1, 'crs': self._crs,
-                 'transform': self.transform,
-                 'height': self.height, 'width': self.width,
-                 'dtype': np.float32})
-    return meta
-  
-  @property
-  def sources(self):
-    return self._sources
+    def block_windows(self):
+        y_inc, x_inc = self._block_shape
+        for j in range(0, self.height, y_inc):
+            j2 = min(j + y_inc, self.height)
+            for i in range(0, self.width, x_inc):
+                i2 = min(i + x_inc, self.width)
+                yield ((j, j2), (i, i2))
 
-  @property
-  def bounds(self):
-    return self._bounds
+    def need(self, what):
+        return what in self._needed
 
-  @bounds.setter
-  def bounds(self, bounds):
-    self._bounds = bounds
+    def meta(self, args={}):
+        meta = self.sources[0].reader.meta.copy()
+        meta.update(
+            {
+                "driver": "GTiff",
+                "compress": "lzw",
+                "predictor": 3,
+                "nodata": self._nodata,
+            }
+        )
+        meta.update(args)
+        meta.update(
+            {
+                "count": 1,
+                "crs": self._crs,
+                "transform": self.transform,
+                "height": self.height,
+                "width": self.width,
+                "dtype": np.float32,
+            }
+        )
+        return meta
 
-  @property
-  def transform(self):
-    return self._transform
+    @property
+    def sources(self):
+        return self._sources
 
-  @transform.setter
-  def transform(self, transform):
-    self._transform = transform
+    @property
+    def bounds(self):
+        return self._bounds
 
-  @property
-  def shape(self):
-    return self._shape
+    @bounds.setter
+    def bounds(self, bounds):
+        self._bounds = bounds
 
-  @shape.setter
-  def shape(self, shape):
-    self._shape = shape
+    @property
+    def transform(self):
+        return self._transform
 
-  @property
-  def height(self):
-    return self._shape[0]
+    @transform.setter
+    def transform(self, transform):
+        self._transform = transform
 
-  @property
-  def width(self):
-    return self._shape[1]
+    @property
+    def shape(self):
+        return self._shape
 
-  @property
-  def mask(self):
-    return self._mask
+    @shape.setter
+    def shape(self, shape):
+        self._shape = shape
 
-  @mask.setter
-  def mask(self, mask):
-    self._mask = mask
+    @property
+    def height(self):
+        return self._shape[0]
 
-  @property
-  def what(self):
-    return self._what
+    @property
+    def width(self):
+        return self._shape[1]
 
-  @property
-  def msgs(self):
-    return self._msgs
+    @property
+    def mask(self):
+        return self._mask
 
-  @msgs.setter
-  def msgs(self, val):
-    self._msgs = val
+    @mask.setter
+    def mask(self, mask):
+        self._mask = mask
+
+    @property
+    def what(self):
+        return self._what
+
+    @property
+    def msgs(self):
+        return self._msgs
+
+    @msgs.setter
+    def msgs(self, val):
+        self._msgs = val
