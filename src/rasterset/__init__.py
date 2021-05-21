@@ -7,14 +7,13 @@ import math
 import multiprocessing
 import numpy as np
 import numpy.ma as ma
-from pathlib import Path
 import rasterio
 from tqdm import tqdm
 
 from .evalcontext import EvalContext
 from .raster import Raster
 from .rastercol import RasterCol
-from ..simpleexpr import SimpleExpr
+from .simpleexpr import SimpleExpr
 
 
 class RasterSet(object):
@@ -210,39 +209,23 @@ class RasterSet(object):
         data.mask = namask
         data[~namask] = df[ctx.what]
         if False:
-            from rasterio.plot import show
             import pdb
-
             pdb.set_trace()
             import pandas as pd
-
             dframe = pd.DataFrame(df)
             # import projections.pd_utils as pd_utils
             dframe.to_pickle("evaled.pyd")
         if False:
             import pandas as pd
-
             dframe = pd.DataFrame(df)
-            import projections.pd_utils as pd_utils
-
             df2 = {}
-            df3 = {}
             for k in df.keys():
                 tmp = ma.empty_like(namask, dtype=np.float32)
                 tmp.mask = namask
                 tmp[~namask] = df[k]
-                df2[k] = tmp  # .reshape(-1)
-                df3[k] = df2[k][75:135, 880]
-            dframe = pd.DataFrame(df3)
-            # pd_utils.save_pandas('evaled.pyd', dframe)
+                df2[k] = tmp
+            dframe = pd.DataFrame(df2)
             dframe.to_csv("evaled.csv")
-            import pdb
-
-            pdb.set_trace()
-            # import pandas as pd
-            # dframe = pd.DataFrame(df2)
-            # import pd_utils
-            # pd_utils.save_pandas('1950.pyd', dframe)
         return data
 
     def eval(self, what, quiet=False, args={}):
@@ -264,7 +247,6 @@ class RasterSet(object):
             with rasterio.open(path, "w", **meta) as dst:
                 with click.progressbar(ctx.block_windows(), iters) as bar:
                     for win in bar:
-                        height, width = (win[0][1] - win[0][0], win[1][1] - win[1][0])
                         out = self._eval(ctx, win)
                         dst.write(out.filled(meta["nodata"]), window=win, indexes=1)
                         ctx.msgs = False

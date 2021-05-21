@@ -1,5 +1,3 @@
-import math
-
 import numpy as np
 import numpy.ma as ma
 import rasterio
@@ -189,7 +187,6 @@ class EvalContext(object):
         block_shapes = [s.block_shape for s in sources]
         ys, xs = zip(*block_shapes)
         block_shape = (max(ys), max(xs))
-        blocks = set(block_shapes)
         return block_shape
 
     def block_windows(self):

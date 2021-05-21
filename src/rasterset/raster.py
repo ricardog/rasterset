@@ -1,5 +1,3 @@
-import numpy as np
-import numpy.ma as ma
 from pathlib import Path
 import rasterio
 import rasterio.errors
@@ -44,7 +42,7 @@ class Raster(object):
         if getattr(self._threadlocal, "reader", None) is None:
             try:
                 self._threadlocal.reader = rasterio.open(self._fname)
-            except (SystemError, rasterio.errors.RasterioIOError) as e:
+            except (SystemError, rasterio.errors.RasterioIOError):
                 print("Error: opening raster '%s' for %s" % (self._fname, self.name))
                 raise SystemError(
                     "Error: opening raster '%s' for %s" % (self._fname, self.name)
@@ -80,7 +78,7 @@ class Raster(object):
         win = window_inset(self.window, window)
         try:
             data = self.reader.read(self._band, window=win, masked=True)
-        except IndexError as e:
+        except IndexError:
             print("Error: reading band %d from %s" % (self._band, self._fname))
             raise IndexError(
                 "Error: reading band %d from %s" % (self._band, self._fname)
@@ -88,10 +86,9 @@ class Raster(object):
         if self.mask is not None:
             if window:
                 data.mask = (
-                    data.mask
-                    | self.mask[
-                        window[0][0] : window[0][1], window[1][0] : window[1][1]
-                    ]
+                    data.mask | self.mask[window[0][0]: window[0][1],
+                                          window[1][0]: window[1][1]
+                                          ]
                 )
             else:
                 data.mask = data.mask | self.mask
@@ -99,7 +96,6 @@ class Raster(object):
 
     def __repr__(self):
         parts = urlparse(self._fname)
-        scheme = parts.scheme or None
         if parts.scheme is None:
             path = Path(parts.path)
             if path.is_absolute():

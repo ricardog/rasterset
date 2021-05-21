@@ -1,5 +1,5 @@
 from .raster import Raster
-from ..simpleexpr import SimpleExpr
+from .simpleexpr import SimpleExpr
 
 
 class RasterCol(object):
