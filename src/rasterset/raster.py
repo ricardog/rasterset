@@ -20,18 +20,13 @@ def window_inset(win1, win2):
 
 
 class Raster(object):
-    def __init__(self, name, fname, band=1):
-        self._name = name
+    def __init__(self, fname, band=1):
         self._fname = fname
         self._threadlocal = threading.local()
         self._band = band
         self._window = None
         self._mask = None
         self._str = None
-
-    @property
-    def name(self):
-        return self._name
 
     @property
     def syms(self):
@@ -43,10 +38,8 @@ class Raster(object):
             try:
                 self._threadlocal.reader = rasterio.open(self._fname)
             except (SystemError, rasterio.errors.RasterioIOError):
-                print("Error: opening raster '%s' for %s" % (self._fname, self.name))
-                raise SystemError(
-                    "Error: opening raster '%s' for %s" % (self._fname, self.name)
-                )
+                print("Error: opening raster '%s'" % (self._fname))
+                raise SystemError("Error: opening raster '%s'" % (self._fname))
         return self._threadlocal.reader
 
     @property

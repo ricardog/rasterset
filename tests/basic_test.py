@@ -5,10 +5,10 @@ dir_path = Path(__file__).parent
 
 def test_sum():
     rs = RasterSet({
-        'ice': Raster('ice', Path(dir_path, 'gicew-1700.tif')),
-        'a': SimpleExpr('a', 1),
-        'b': SimpleExpr('b', 2),
-        'c': SimpleExpr('c', 'ice + a + log(b)')
+        'ice': Raster(Path(dir_path, 'gicew-1700.tif')),
+        'a': SimpleExpr(1),
+        'b': SimpleExpr(2),
+        'c': SimpleExpr('ice + a + log(b)')
     })
     data, meta = rs.eval('c')
     return
@@ -16,10 +16,10 @@ def test_sum():
 
 def test_mul():
     rs = RasterSet({
-        'ice': Raster('ice', Path(dir_path, 'gicew-1700.tif')),
-        'a': SimpleExpr('a', 1),
-        'b': SimpleExpr('b', 2),
-        'c': SimpleExpr('c', 'ice + a * log(b)')
+        'ice': Raster(Path(dir_path, 'gicew-1700.tif')),
+        'a': SimpleExpr(1),
+        'b': SimpleExpr(2),
+        'c': SimpleExpr('ice + a * log(b)')
     })
     data, meta = rs.eval('c')
     return

@@ -6,14 +6,10 @@ import r2py.rparser as rparser
 
 
 class SimpleExpr:
-    def __init__(self, name, expr=None):
-        if expr is not None:
-            self.name = name
-            self.tree = reval.make_inputs(rparser.parse(expr))
-        else:
-            self.name = "dummy"
-            self.tree = reval.make_inputs(rparser.parse(name))
+    def __init__(self, expr=None):
+        self.tree = reval.make_inputs(rparser.parse(expr))
         lokals = {}
+        name = 'simplexpr'
         exec(reval.to_py(self.tree, name), lokals)
         self.func = lokals[name + "_st"]
 

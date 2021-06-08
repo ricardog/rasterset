@@ -56,9 +56,9 @@ class RasterSet(object):
         #  self._data[key] = self._data[value]
         #  return
         if isinstance(value, (int, float)):
-            value = SimpleExpr(key, value)
+            value = SimpleExpr(value)
         elif isinstance(value, str):
-            value = SimpleExpr(key, value)
+            value = SimpleExpr(value)
         self._data[key] = RasterCol(key, value, self.mask, self.bbox)
         self._levels = []
 
