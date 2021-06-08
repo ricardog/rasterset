@@ -29,7 +29,7 @@ setup(
         'Click',
         'numpy',
         'pandas',
-        'r2py @ git+https://github.com/ricardog/r2py',
+        'r2py @ git+https://github.com/ricardog/r2py.git',
         'rasterio',
         'setuptools',
         'tqdm',
