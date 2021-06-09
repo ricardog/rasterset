@@ -12,7 +12,6 @@ from tqdm import tqdm
 
 from .evalcontext import EvalContext
 from .raster import Raster
-from .rastercol import RasterCol
 from .simpleexpr import SimpleExpr
 
 
@@ -59,7 +58,7 @@ class RasterSet(object):
             value = SimpleExpr(value)
         elif isinstance(value, str):
             value = SimpleExpr(value)
-        self._data[key] = RasterCol(key, value, self.mask, self.bbox)
+        self._data[key] = value
         self._levels = []
 
     def __contains__(self, key):
@@ -114,22 +113,22 @@ class RasterSet(object):
         order = {}
         visiting = {}
 
-        def visit(col):
-            if col.name in order:
+        def visit(name, col):
+            if name in order:
                 return
             me = 0
-            if col.name in visiting and col.name not in order:
+            if name in visiting and name not in order:
                 raise RuntimeError("circular dependency")
-            visiting[col.name] = True
-            for name in col.inputs:
-                if name not in order:
-                    visit(self._data[name])
-                me = max(me, order[name] + 1)
-            del visiting[col.name]
-            order[col.name] = me
+            visiting[name] = True
+            for other in col.inputs:
+                if other not in order:
+                    visit(other, self._data[name])
+                me = max(me, order[other] + 1)
+            del visiting[name]
+            order[name] = me
 
-        for col in self._data.values():
-            visit(col)
+        for name, col in self._data.items():
+            visit(name, col)
 
         ordered = sorted(order.items(), key=lambda kv: (kv[1], kv[0]))
         nlevels = ordered[-1][1]
@@ -137,7 +136,7 @@ class RasterSet(object):
         for k, v in ordered:
             self._levels[v].append(k)
         self._levels[0].sort(
-            key=lambda a: -1 if isinstance(self._data[a].source, Raster) else 1
+            key=lambda a: -1 if self._data[a].is_raster else 1
         )
 
     def to_dot(self):
@@ -296,9 +295,9 @@ class RasterSet(object):
                 if sym in self and self[sym].inputs:
                     ret[sym] = dfs(self[sym])
                 elif sym in self and self[sym].is_raster:
-                    ret[sym] = {self[sym].source.__str__(): {}}
+                    ret[sym] = {self[sym].__str__(): {}}
                 elif sym in self and self[sym].is_constant is not None:
-                    ret[sym] = {self[sym].source.is_constant: {}}
+                    ret[sym] = {self[sym].is_constant: {}}
                 else:
                     import pdb
 

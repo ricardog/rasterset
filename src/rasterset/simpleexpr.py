@@ -4,8 +4,7 @@ import numpy.ma as ma
 import r2py.reval as reval
 import r2py.rparser as rparser
 
-
-class SimpleExpr:
+class SimpleExpr(object):
     def __init__(self, expr=None):
         self.tree = reval.make_inputs(rparser.parse(expr))
         lokals = {}
@@ -18,9 +17,17 @@ class SimpleExpr:
         return reval.find_inputs(self.tree)
 
     @property
+    def inputs(self):
+        return set(self.syms)
+
+    @property
     def is_constant(self):
         return reval.is_constant(self.tree)
 
+    @property
+    def is_raster(self):
+        return False
+    
     def eval(self, df, window=None):
         try:
             res = self.func(df)
@@ -39,4 +46,7 @@ class SimpleExpr:
         return res
 
     def __repr__(self):
+        return str(self.tree)
+
+    def __str__(self):
         return str(self.tree)

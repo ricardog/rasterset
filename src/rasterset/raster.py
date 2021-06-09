@@ -4,7 +4,6 @@ import rasterio.errors
 import threading
 from urllib.parse import urlparse
 
-
 def window_inset(win1, win2):
     if win2:
         roff = round(win1.row_off)
@@ -26,11 +25,36 @@ class Raster(object):
         self._band = band
         self._window = None
         self._mask = None
+        self._bbox = None
         self._str = None
 
     @property
     def syms(self):
         return []
+
+    @property
+    def inputs(self):
+        return set()
+
+    @property
+    def mask(self):
+        return self._mask
+
+    @mask.setter
+    def mask(self, mask):
+        self._mask = mask
+
+    @property
+    def bbox(self):
+        return self._bbox
+
+    @property
+    def is_constant(self):
+        return False
+
+    @property
+    def is_raster(self):
+        return True
 
     @property
     def reader(self):
@@ -49,14 +73,6 @@ class Raster(object):
     @window.setter
     def window(self, window):
         self._window = window
-
-    @property
-    def mask(self):
-        return self._mask
-
-    @mask.setter
-    def mask(self, mask):
-        self._mask = mask
 
     @property
     def block_shape(self):
@@ -88,17 +104,19 @@ class Raster(object):
         return data
 
     def __repr__(self):
-        parts = urlparse(self._fname)
+        fname = str(self._fname)
+        parts = urlparse(fname)
         if parts.scheme is None:
             path = Path(parts.path)
             if path.is_absolute():
                 return path.as_uri()
-            return self._fname
-        return self._fname
+            return fname
+        return fname
 
     def __str__(self):
         if self._str is None:
-            parts = urlparse(self._fname)
+            fname = str(self._fname)
+            parts = urlparse(fname)
             path = Path(parts.path)
             scheme = parts.scheme or "file"
             if len(path.parts) > 2:

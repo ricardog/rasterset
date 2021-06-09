@@ -3,7 +3,6 @@ import numpy.ma as ma
 import rasterio
 import rasterio.features
 
-
 def window_shape(win):
     # return (win[0][1] - win[0][0], win[1][1] - win[1][0])
     return (win.height, win.width)
@@ -20,10 +19,9 @@ class EvalContext(object):
         self._transform = None
         self._nodata = -9999
         self._needed = sorted(rasterset.find_needed(what), key=lambda x: x.lower())
-        self._sources = [
-            rasterset[x].source
-            for x in filter(lambda c: rasterset[c].is_raster, self._needed)
-        ]
+        self._sources = tuple(filter(lambda c: c.is_raster,
+                                     [rasterset[x] for x in self._needed]))
+
 
         # Check all rasters have the same resolution.
         # TODO:: scale rasters appropriatelly
