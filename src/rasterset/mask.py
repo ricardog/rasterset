@@ -10,59 +10,15 @@ from . import window
 WORLD_BOUNDS = (-180.0, -90.0, 180.0, 90)
 
 
-class Mask:
-    def __init__(self, shapes, mask_ds, maskval, all_touched):
-        self._ds = None
-        self._shapes = None
-        self._maskval = maskval
-        self._all_touched = all_touched
+class MaskBase:
+    def __init__(self):
         self._transform = None
         self._mask = None
-        if shapes:
-            self._bounds = getattr(shapes, 'bounds', None)
-            if not self._bounds:
-                self._bounds = window.union(shapes)
-            self._shapes = [feature["geometry"] for feature in shapes]
-            self._type = 'shape'
-            return
-        if mask_ds:
-            self._bounds = mask_ds.bounds
-            self._ds = mask_ds
-            self._type = 'raster'
-            return
-        self._type = None
-        self._bounds = WORLD_BOUNDS
+        self._bounds = None
         return
 
-    def read(self, window):
-        assert self._ds is not None
-        data = self.mask_ds.read(1, masked=True, window=window)
-        return ma.where(data == self._maskval, True, False).filled(True)
-
-    def rasterize(self, window):
-        assert self.transform is not None
-        return rasterio.features.geometry_mask(
-            self._shapes,
-            transform=self.transform,
-            invert=False,
-            out_shape=window.shape(window),
-            all_touched=self._all_touched,
-        )
-
     def eval(self, bounds):
-        if self._mask is not None:
-            return self.mask
-        if self._type == 'raster':
-            self._mask = self.read(bounds)
-            return
-        win = from_bounds(*bounds, self.transform)
-        if self._type is None:
-            self._mask = np.full(window.shape(win), 0, dtype='uint8')
-            return
-        if self._type == 'shapes':
-            self._mask = self.rasterize(win)
-            return
-        assert RuntimeError(f"Unknown window type {self._type}")
+        raise NotImplementedError()
         return
 
     @property
@@ -81,3 +37,61 @@ class Mask:
     def transform(self, transform):
         self._transform = transform
         return
+
+
+class NullMask(MaskBase):
+    def __init__(self):
+        super().__init__()
+        self._bounds = WORLD_BOUNDS
+        return
+
+    def eval(self, bounds):
+        win = from_bounds(*bounds, self.transform)
+        self._mask = np.full(window.shape(win), 0, dtype='uint8')
+        return
+
+
+class ShapesMask(MaskBase):
+    def __init__(self, shapes, all_touched):
+        super().__init__()
+        self._all_touched = all_touched
+        self._bounds = getattr(shapes, 'bounds', None)
+        if not self._bounds:
+            self._bounds = window.union(shapes)
+        self._shapes = [feature["geometry"] for feature in shapes]
+        return
+
+    def eval(self, bounds):
+        assert self.transform is not None
+        win = from_bounds(*bounds, self.transform)
+        self._mask = rasterio.features.geometry_mask(
+            self._shapes,
+            transform=self.transform,
+            invert=False,
+            out_shape=window.shape(win),
+            all_touched=self._all_touched,
+        )
+        return
+
+
+class RasterMask(MaskBase):
+    def __init__(self, ds, mask_val=1.0):
+        super().__init__()
+        self._bounds = ds.bounds
+        self._ds = ds
+        self._mask_val = mask_val
+        return
+
+    def eval(self, bounds):
+        win = self._ds.window(*bounds)
+        data = self._ds.read(1, masked=True, window=win)
+        self._mask = ma.where(data == self._mask_val, True, False).filled(True)
+        return
+
+
+def mask_maker(shapes=None, all_touched=None, ds=None, mask_val=None):
+    if shapes is not None:
+        return ShapesMask(shapes, all_touched)
+    if ds is not None:
+        return RasterMask(ds, mask_val)
+    return NullMask()

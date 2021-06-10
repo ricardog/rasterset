@@ -3,7 +3,7 @@ import numpy as np
 from rasterio.transform import rowcol
 from rasterio.windows import Window
 
-from .mask import Mask
+from .mask import mask_maker
 from . import window
 
 
@@ -39,8 +39,8 @@ class EvalContext(object):
             *(s.reader.bounds for s in self.sources)
         )
 
-        self._mask = Mask(rasterset.shapes, rasterset.mask,
-                          rasterset.maskval, rasterset.all_touched)
+        self._mask = mask_maker(rasterset.shapes, rasterset.all_touched,
+                                rasterset.mask, rasterset.maskval)
         # Crop output to bounds of mask.
         if crop:
             self._bounds = window.intersection(self.bounds, self.mask.bounds)
