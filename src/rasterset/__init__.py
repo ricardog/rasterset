@@ -1,17 +1,18 @@
-import asciitree
 import click
 from collections import OrderedDict
 import concurrent.futures
 from functools import reduce
 import math
 import multiprocessing
+
+import asciitree
 import numpy as np
 import numpy.ma as ma
 import rasterio
 from tqdm import tqdm
 
 from .evalcontext import EvalContext
-from .raster import Raster
+from .raster import Raster                                  # noqa F401
 from .simpleexpr import SimpleExpr
 
 
@@ -140,9 +141,7 @@ class RasterSet(object):
         )
 
     def to_dot(self):
-        import pdb
-
-        pdb.set_trace()
+        import pdb; pdb.set_trace()
         print("digraph: LogAbund {")
         print("node [fontname: Palatino, fontsize: 24];")
         for idx, level in enumerate(self._levels):
@@ -153,10 +152,7 @@ class RasterSet(object):
         print("}")
 
     def set_props(self, ctx):
-        for col in ctx.sources:
-            if ctx.mask is not None:
-                col.mask = ctx.mask
-            col.window = col.reader.window(*ctx.bounds)
+        return
 
     def find_needed(self, what):
         def transitive(me):
@@ -208,8 +204,7 @@ class RasterSet(object):
         data.mask = namask
         data[~namask] = df[ctx.what]
         if False:
-            import pdb
-            pdb.set_trace()
+            import pdb; pdb.set_trace()
             import pandas as pd
             dframe = pd.DataFrame(df)
             # import projections.pd_utils as pd_utils
@@ -299,9 +294,7 @@ class RasterSet(object):
                 elif sym in self and self[sym].is_constant is not None:
                     ret[sym] = {self[sym].is_constant: {}}
                 else:
-                    import pdb
-
-                    pdb.set_trace()
+                    import pdb; pdb.set_trace()
                     ret[sym] = {}
             return ret
 

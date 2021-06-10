@@ -3,11 +3,10 @@ import numpy.ma as ma
 import rasterio
 import rasterio.features
 
-def window_shape(win):
-    # return (win[0][1] - win[0][0], win[1][1] - win[1][0])
-    return (win.height, win.width)
+from . import window
 
 
+WORLD_BOUNDS = (-180.0, -90.0, 180.0, 90)
 class EvalContext(object):
     def __init__(self, rasterset, what, crop=True, bbox=None):
         self._rasterset = rasterset
@@ -22,14 +21,14 @@ class EvalContext(object):
         self._sources = tuple(filter(lambda c: c.is_raster,
                                      [rasterset[x] for x in self._needed]))
 
-
         # Check all rasters have the same resolution.
         # TODO:: scale rasters appropriatelly
         self._res, self._crs = self.check_rasters(self.sources)
         # Compute reading window and affine transform for every raster
-        if bbox is None:
-            bbox = (-180.0, -90.0, 180.0, 90)
-        self.bounds = self.find_bounds(bbox, self.sources)
+        self.bounds = window.intersection(
+            bbox or WORLD_BOUNDS,
+            *(s.reader.bounds for s in self.sources)
+        )
 
         # Update bounds, transform, and shape if mask given
         if rasterset.shapes or rasterset.mask:
@@ -40,34 +39,23 @@ class EvalContext(object):
                 rasterset.all_touched,
             )
 
-        # Set the window we are interested in for all sources
+        # Set the window & mask for all sources
         for src in self.sources:
-            xl, yh = ~src.reader.transform * (self.bounds[0], self.bounds[1])
-            xh, yl = ~src.reader.transform * (self.bounds[2], self.bounds[3])
-            win = src.reader.window(*self.bounds)
-            win = rasterio.windows.Window(
-                round(win.col_off),
-                round(win.row_off),
-                round(win.width),
-                round(win.height),
-            )
-            src.window = win
+            src.window = window.round(src.reader.window(*self.bounds))
+            if self.mask is not None:
+                src.mask = self.mask
 
         # The number of rows and columns must be the same for all rasters.
         # Trigger and assert if there is more than one window shape in
         # the raster set.
-        shapes = [window_shape(src.window) for src in self.sources]
-        if len(set(shapes)) > 1:
-            import pdb
-
-            pdb.set_trace()
+        shapes = [window.shape(src.window) for src in self.sources]
         assert len(set(shapes)) == 1, "More than one window size"
 
         # Set the affine transform and shape for the output
         self._transform = self.sources[0].reader.window_transform(
             self.sources[0].window
         )
-        self._shape = window_shape(self.sources[0].window)
+        self._shape = window.shape(self.sources[0].window)
         if self.mask is not None:
             assert self.shape == self.mask.shape
 
@@ -114,30 +102,16 @@ class EvalContext(object):
         return first_res, first_crs
 
     @staticmethod
-    def find_bounds(bounds, sources):
-        for src in sources:
-            src_bounds = src.reader.bounds
-            if rasterio.coords.disjoint_bounds(bounds, src_bounds):
-                raise ValueError("rasters do not intersect")
-            bounds = (
-                max(bounds[0], src_bounds[0]),
-                max(bounds[1], src_bounds[1]),
-                min(bounds[2], src_bounds[2]),
-                min(bounds[3], src_bounds[3]),
-            )
-        return bounds
-
-    @staticmethod
     def mask_bounds(shapes):
         if shapes is None:
-            return None
-        all_bounds = [rasterio.features.bounds(shape) for shape in shapes]
-        minxs, minys, maxxs, maxys = zip(*all_bounds)
-        bounds = (min(minxs), min(minys), max(maxxs), max(maxys))
-        return bounds
+            return WORLD_BOUNDS
+        bounds = getattr(shapes, 'bounds', None)
+        if bounds:
+            return bounds
+        return window.union(shapes)
 
     @staticmethod
-    def compute_mask(shapes, all_touched, transform, shape):
+    def rasterize_mask(shapes, all_touched, transform, shape):
         if shapes is None:
             return
         gshapes = [feature["geometry"] for feature in shapes]
@@ -152,33 +126,29 @@ class EvalContext(object):
 
     def apply_mask(self, shapes, mask_ds, maskval=1.0, all_touched=True):
         if shapes:
-            mask_bounds = self.mask_bounds(shapes)
+            mbounds = self.mask_bounds(shapes)
         else:
-            mask_bounds = mask_ds.bounds
-        if rasterio.coords.disjoint_bounds(self.bounds, mask_bounds):
+            mbounds = mask_ds.bounds
+        if rasterio.coords.disjoint_bounds(self.bounds, mbounds):
             raise ValueError("rasters do not intersect mask")
         if self._crop:
-            minxs, minys, maxxs, maxys = zip(self.bounds, mask_bounds)
-            bounds = (max(minxs), max(minys), min(maxxs), min(maxys))
+            crop_bounds = window.intersection(self.bounds, mbounds)
         else:
-            bounds = self.bounds
+            crop_bounds = self.bounds
 
-        window = self.sources[0].reader.window(*bounds)
-        transform = self.sources[0].reader.window_transform(window)
-        shape = window_shape(window)
         if not mask_ds:
-            mask = self.compute_mask(shapes, all_touched, transform, shape)
-        else:
-            win = mask_ds.window(*bounds)
-            win = rasterio.windows.Window(
-                round(win.col_off),
-                round(win.row_off),
-                round(win.width),
-                round(win.height),
+            win = window.round(self.sources[0].reader.window(*crop_bounds))
+            mask = self.rasterize_mask(
+                shapes,
+                all_touched,
+                self.sources[0].reader.window_transform(win),
+                window.shape(win)
             )
+        else:
+            win = window.round(mask_ds.window(*crop_bounds))
             data = mask_ds.read(1, masked=True, window=win)
             mask = ma.where(data == maskval, True, False).filled(True)
-        return bounds, mask
+        return crop_bounds, mask
 
     @staticmethod
     def block_shape(sources):
@@ -193,7 +163,8 @@ class EvalContext(object):
             j2 = min(j + y_inc, self.height)
             for i in range(0, self.width, x_inc):
                 i2 = min(i + x_inc, self.width)
-                yield ((j, j2), (i, i2))
+                yield Window(col_off=i, row_off=j,
+                             width=i2 - i, height=j2 - j)
 
     def need(self, what):
         return what in self._needed
@@ -206,6 +177,7 @@ class EvalContext(object):
                 "compress": "lzw",
                 "predictor": 3,
                 "nodata": self._nodata,
+                "sparse_ok": "YES",
             }
         )
         meta.update(args)

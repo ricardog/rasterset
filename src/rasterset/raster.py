@@ -1,20 +1,13 @@
 from pathlib import Path
+import threading
 import rasterio
 import rasterio.errors
-import threading
+from rasterio.windows import intersection, Window
 from urllib.parse import urlparse
 
 def window_inset(win1, win2):
     if win2:
-        roff = round(win1.row_off)
-        coff = round(win1.col_off)
-        width = round(win1.width)
-        height = round(win1.height)
-        win1 = ((roff, roff + height), (coff, coff + width))
-        return (
-            (win1[0][0] + win2[0][0], min(win1[0][0] + win2[0][1], win1[0][1])),
-            (win1[1][0] + win2[1][0], min(win1[1][0] + win2[1][1], win1[1][1])),
-        )
+        return intersection(win1, win2)
     return win1
 
 
@@ -84,7 +77,10 @@ class Raster(object):
 
     def eval(self, df, window=None):
         assert self.window
-        win = window_inset(self.window, window)
+        if window:
+            win = intersection(self.window, window)
+        else:
+            win = self.window
         try:
             data = self.reader.read(self._band, window=win, masked=True)
         except IndexError:
@@ -95,9 +91,7 @@ class Raster(object):
         if self.mask is not None:
             if window:
                 data.mask = (
-                    data.mask | self.mask[window[0][0]: window[0][1],
-                                          window[1][0]: window[1][1]
-                                          ]
+                    data.mask | self.mask[window.toslices()]
                 )
             else:
                 data.mask = data.mask | self.mask
