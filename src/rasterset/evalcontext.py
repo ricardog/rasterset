@@ -1,66 +1,58 @@
+from affine import Affine
 import numpy as np
-import numpy.ma as ma
-import rasterio
-import rasterio.features
+from rasterio.transform import rowcol
+from rasterio.windows import Window
 
+from .mask import Mask
 from . import window
 
 
 WORLD_BOUNDS = (-180.0, -90.0, 180.0, 90)
+
+
 class EvalContext(object):
     def __init__(self, rasterset, what, crop=True, bbox=None):
         self._rasterset = rasterset
         self._what = what
         self._crop = crop
+        self._crs = None
+        self._res = None
         self._msgs = True
         self._mask = None
         self._bounds = None
         self._transform = None
         self._nodata = -9999
+        self._window = None
+        self._shape = None
+        self._block_shape = None
         self._needed = sorted(rasterset.find_needed(what), key=lambda x: x.lower())
         self._sources = tuple(filter(lambda c: c.is_raster,
                                      [rasterset[x] for x in self._needed]))
 
         # Check all rasters have the same resolution.
-        # TODO:: scale rasters appropriatelly
+        # TODO: scale rasters appropriatelly.
         self._res, self._crs = self.check_rasters(self.sources)
-        # Compute reading window and affine transform for every raster
-        self.bounds = window.intersection(
+
+        # Compute bounds as intersection of all raster bounds.
+        self._bounds = window.intersection(
             bbox or WORLD_BOUNDS,
             *(s.reader.bounds for s in self.sources)
         )
 
-        # Update bounds, transform, and shape if mask given
-        if rasterset.shapes or rasterset.mask:
-            self.bounds, self.mask = self.apply_mask(
-                rasterset.shapes,
-                rasterset.mask,
-                rasterset.maskval,
-                rasterset.all_touched,
-            )
+        self._mask = Mask(rasterset.shapes, rasterset.mask,
+                          rasterset.maskval, rasterset.all_touched)
+        # Crop output to bounds of mask.
+        if crop:
+            self._bounds = window.intersection(self.bounds, self.mask.bounds)
 
-        # Set the window & mask for all sources
-        for src in self.sources:
-            src.window = window.round(src.reader.window(*self.bounds))
-            if self.mask is not None:
-                src.mask = self.mask
-
-        # The number of rows and columns must be the same for all rasters.
-        # Trigger and assert if there is more than one window shape in
-        # the raster set.
-        shapes = [window.shape(src.window) for src in self.sources]
-        assert len(set(shapes)) == 1, "More than one window size"
-
-        # Set the affine transform and shape for the output
-        self._transform = self.sources[0].reader.window_transform(
-            self.sources[0].window
-        )
-        self._shape = window.shape(self.sources[0].window)
-        if self.mask is not None:
-            assert self.shape == self.mask.shape
-
-        # Compute minimal block shape that covers all block shapes
-        self._block_shape = self.block_shape(self.sources)
+        # Set the affine transform and calculate mask.
+        self._transform = (Affine.translation(self.bounds.left,
+                                              self.bounds.top) *
+                           Affine.scale(self.res[0], self.res[1] * -1) *
+                           Affine.identity())
+        self.mask.transform = self.transform
+        self.mask.eval(self.bounds)
+        return
 
     @staticmethod
     def check_rasters(columns):
@@ -101,64 +93,8 @@ class EvalContext(object):
 
         return first_res, first_crs
 
-    @staticmethod
-    def mask_bounds(shapes):
-        if shapes is None:
-            return WORLD_BOUNDS
-        bounds = getattr(shapes, 'bounds', None)
-        if bounds:
-            return bounds
-        return window.union(shapes)
-
-    @staticmethod
-    def rasterize_mask(shapes, all_touched, transform, shape):
-        if shapes is None:
-            return
-        gshapes = [feature["geometry"] for feature in shapes]
-        mask = rasterio.features.geometry_mask(
-            gshapes,
-            transform=transform,
-            invert=False,
-            out_shape=shape,
-            all_touched=all_touched,
-        )
-        return mask
-
-    def apply_mask(self, shapes, mask_ds, maskval=1.0, all_touched=True):
-        if shapes:
-            mbounds = self.mask_bounds(shapes)
-        else:
-            mbounds = mask_ds.bounds
-        if rasterio.coords.disjoint_bounds(self.bounds, mbounds):
-            raise ValueError("rasters do not intersect mask")
-        if self._crop:
-            crop_bounds = window.intersection(self.bounds, mbounds)
-        else:
-            crop_bounds = self.bounds
-
-        if not mask_ds:
-            win = window.round(self.sources[0].reader.window(*crop_bounds))
-            mask = self.rasterize_mask(
-                shapes,
-                all_touched,
-                self.sources[0].reader.window_transform(win),
-                window.shape(win)
-            )
-        else:
-            win = window.round(mask_ds.window(*crop_bounds))
-            data = mask_ds.read(1, masked=True, window=win)
-            mask = ma.where(data == maskval, True, False).filled(True)
-        return crop_bounds, mask
-
-    @staticmethod
-    def block_shape(sources):
-        block_shapes = [s.block_shape for s in sources]
-        ys, xs = zip(*block_shapes)
-        block_shape = (max(ys), max(xs))
-        return block_shape
-
     def block_windows(self):
-        y_inc, x_inc = self._block_shape
+        y_inc, x_inc = self.block_shape
         for j in range(0, self.height, y_inc):
             j2 = min(j + y_inc, self.height)
             for i in range(0, self.width, x_inc):
@@ -184,7 +120,7 @@ class EvalContext(object):
         meta.update(
             {
                 "count": 1,
-                "crs": self._crs,
+                "crs": self.crs,
                 "transform": self.transform,
                 "height": self.height,
                 "width": self.width,
@@ -201,41 +137,68 @@ class EvalContext(object):
     def bounds(self):
         return self._bounds
 
-    @bounds.setter
-    def bounds(self, bounds):
-        self._bounds = bounds
-
     @property
     def transform(self):
         return self._transform
 
-    @transform.setter
-    def transform(self, transform):
-        self._transform = transform
+    @property
+    def res(self):
+        return self._res
+
+    @property
+    def crs(self):
+        return self._crs
+
+    @property
+    def window(self):
+        if self._window is not None:
+            return self._window
+        (left, bottom, right, top) = self.bounds
+        rows, cols = rowcol(
+            self.transform,
+            [left, right, right, left],
+            [top, top, bottom, bottom],
+            op=float,
+            precision=1e-5,
+        )
+        row_start, row_stop = min(rows), max(rows)
+        col_start, col_stop = min(cols), max(cols)
+
+        self._window = window.round(Window(
+            col_off=col_start,
+            row_off=row_start,
+            width=max(col_stop - col_start, 0.0),
+            height=max(row_stop - row_start, 0.0),
+        ))
+        return self._window
 
     @property
     def shape(self):
+        if self._shape is not None:
+            return self._shape
+        self._shape = window.shape(self.window)
         return self._shape
 
-    @shape.setter
-    def shape(self, shape):
-        self._shape = shape
+    @property
+    def block_shape(self):
+        if self._block_shape:
+            return self.block_shape
+        block_shapes = [s.block_shape for s in self.sources]
+        ys, xs = zip(*block_shapes)
+        self._block_shape = (max(ys), max(xs))
+        return self._block_shape
 
     @property
     def height(self):
-        return self._shape[0]
+        return self.shape[0]
 
     @property
     def width(self):
-        return self._shape[1]
+        return self.shape[1]
 
     @property
     def mask(self):
         return self._mask
-
-    @mask.setter
-    def mask(self, mask):
-        self._mask = mask
 
     @property
     def what(self):

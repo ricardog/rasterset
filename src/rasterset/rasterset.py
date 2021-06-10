@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from .evalcontext import EvalContext
 from .simpleexpr import SimpleExpr
-
+from . import window
 
 class RasterSet(object):
     def __init__(
@@ -165,6 +165,13 @@ class RasterSet(object):
         print("}")
 
     def set_props(self, ctx):
+        shapes = []
+        for col in ctx.sources:
+            if ctx.mask is not None:
+                col.mask = ctx.mask.mask
+            col.window = col.reader.window(*ctx.bounds)
+            shapes.append(window.shape(col.window))
+        assert len(set(shapes)) == 1, "More than one window size"
         return
 
     def find_needed(self, what):

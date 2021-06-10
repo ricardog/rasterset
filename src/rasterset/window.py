@@ -1,4 +1,3 @@
-
 from functools import reduce
 import numpy as np
 from rasterio.coords import BoundingBox, disjoint_bounds
@@ -22,7 +21,7 @@ def disjoint(bounds):
 
 
 def shape(win):
-    return (win.height, win.width)
+    return (int(win.height), int(win.width))
 
 
 def round(win):
