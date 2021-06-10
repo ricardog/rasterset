@@ -34,5 +34,8 @@ setup(
         "setuptools",
         "tqdm",
     ],
-    extras_require={"dev": ["black", "flake8", "pylint", "pytest"]},
+    extras_require={
+        "dev": ["black", "flake8", "pylint", "pytest"],
+        "test": ["fiona"]
+    },
 )
