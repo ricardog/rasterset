@@ -4,6 +4,7 @@ from rasterio.transform import rowcol
 from rasterio.windows import Window
 
 from .mask import mask_maker
+from . import bounds
 from . import window
 
 
@@ -29,12 +30,12 @@ class EvalContext(object):
         self._sources = tuple(filter(lambda c: c.is_raster,
                                      [rasterset[x] for x in self._needed]))
 
-        # Check all rasters have the same resolution.
-        # TODO: scale rasters appropriatelly.
+        # Check all rasters have the same resolution and CRS.
+        # TODO: scale/reproject rasters as needed.
         self._res, self._crs = self.check_rasters(self.sources)
 
         # Compute bounds as intersection of all raster bounds.
-        self._bounds = window.intersection(
+        self._bounds = bounds.intersection(
             bbox or WORLD_BOUNDS,
             *(s.reader.bounds for s in self.sources)
         )
@@ -43,7 +44,7 @@ class EvalContext(object):
                                 rasterset.mask, rasterset.maskval)
         # Crop output to bounds of mask.
         if crop:
-            self._bounds = window.intersection(self.bounds, self.mask.bounds)
+            self._bounds = bounds.intersection(self.bounds, self.mask.bounds)
 
         # Set the affine transform and calculate mask.
         self._transform = (Affine.translation(self.bounds.left,
