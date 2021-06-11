@@ -13,8 +13,16 @@ import rasterio
 from tqdm import tqdm
 
 from .evalcontext import EvalContext
+from .raster import Raster
 from .simpleexpr import SimpleExpr
 from . import window
+
+
+def is_raster(x):
+    return isinstance(x, Raster)
+
+def is_constant(x):
+    return isinstance(x, SimpleExpr) and (x.is_constant is not None)
 
 class RasterSet(object):
     def __init__(
@@ -150,7 +158,7 @@ class RasterSet(object):
         for k, v in ordered:
             self._levels[v].append(k)
         self._levels[0].sort(
-            key=lambda a: -1 if self._data[a].is_raster else 1
+            key=lambda a: -1 if is_raster(self._data[a]) else 1
         )
 
     def to_dot(self):
@@ -217,7 +225,12 @@ class RasterSet(object):
                 if ctx.need(name):
                     if ctx.msgs:
                         click.echo("  eval %s" % name)
-                    df[name] = self[name].eval(df, window)
+                    if idx == 0:
+                        # First level sources must be able to subset the
+                        # input via the window parameter.
+                        df[name] = self[name].eval(df, window)
+                    else:
+                        df[name] = self[name].eval(df)
             if idx == 0:
                 namask = self.dropna(df)
         data = ma.empty_like(namask, dtype=np.float32)
@@ -309,9 +322,9 @@ class RasterSet(object):
             for sym in sorted(me.inputs):
                 if sym in self and self[sym].inputs:
                     ret[sym] = dfs(self[sym])
-                elif sym in self and self[sym].is_raster:
+                elif sym in self and is_raster(self[sym]):
                     ret[sym] = {self[sym].__str__(): {}}
-                elif sym in self and self[sym].is_constant is not None:
+                elif sym in self and is_constant(self[sym]):
                     ret[sym] = {self[sym].is_constant: {}}
                 else:
                     import pdb; pdb.set_trace()

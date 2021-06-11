@@ -24,10 +24,6 @@ class SimpleExpr(object):
     def is_constant(self):
         return reval.is_constant(self.tree)
 
-    @property
-    def is_raster(self):
-        return False
-    
     def eval(self, df, window=None):
         try:
             res = self.func(df)

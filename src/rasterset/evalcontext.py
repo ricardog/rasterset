@@ -4,6 +4,7 @@ from rasterio.transform import rowcol
 from rasterio.windows import Window
 
 from .mask import mask_maker
+from . import Raster
 from . import bounds
 from . import window
 
@@ -27,7 +28,7 @@ class EvalContext(object):
         self._shape = None
         self._block_shape = None
         self._needed = sorted(rasterset.find_needed(what), key=lambda x: x.lower())
-        self._sources = tuple(filter(lambda c: c.is_raster,
+        self._sources = tuple(filter(lambda c: isinstance(c, Raster),
                                      [rasterset[x] for x in self._needed]))
 
         # Check all rasters have the same resolution and CRS.

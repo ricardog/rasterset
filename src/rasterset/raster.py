@@ -2,8 +2,9 @@ from pathlib import Path
 import threading
 import rasterio
 import rasterio.errors
-from rasterio.windows import intersection, Window
+from rasterio.windows import intersection
 from urllib.parse import urlparse
+
 
 def window_inset(win1, win2):
     if win2:
@@ -40,14 +41,6 @@ class Raster(object):
     @property
     def bbox(self):
         return self._bbox
-
-    @property
-    def is_constant(self):
-        return False
-
-    @property
-    def is_raster(self):
-        return True
 
     @property
     def reader(self):
