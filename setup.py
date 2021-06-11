@@ -5,10 +5,10 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="rasterset",
-    version="0.3.0",
+    version="0.3.1",
     author="Ricardo E. Gonzalez",
     author_email="ricardog@itinerisinc.com",
-    description="Operate on a set f rasters as if it was one",
+    description="Operate on groups of rasters as as a set",
     long_description=long_description,
     long_description_content_type="text/markdown",
     python_requires=">=3.7",
