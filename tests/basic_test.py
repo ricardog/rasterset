@@ -26,6 +26,16 @@ def test_mul():
     return
 
 
+def test_order():
+    rs = RasterSet({
+        'ice1': Raster(Path(dir_path, 'gicew-1700.tif')),
+        'ice2': Raster(Path(dir_path, 'gicew-1700.tif')),
+        'c': SimpleExpr('ice1 * ice2')
+    })
+    data, meta = rs.eval('c')
+    return
+
+
 def test_tree():
     rs = RasterSet({
         'ice': Raster(Path(dir_path, 'gicew-1700.tif')),

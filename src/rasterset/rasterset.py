@@ -144,12 +144,12 @@ class RasterSet(object):
             visiting[name] = True
             for other in col.inputs:
                 if other not in order:
-                    visit(other, self._data[name])
+                    visit(other, self[other])
                 me = max(me, order[other] + 1)
             del visiting[name]
             order[name] = me
 
-        for name, col in self._data.items():
+        for name, col in self.items():
             visit(name, col)
 
         ordered = sorted(order.items(), key=lambda kv: (kv[1], kv[0]))
@@ -158,7 +158,7 @@ class RasterSet(object):
         for k, v in ordered:
             self._levels[v].append(k)
         self._levels[0].sort(
-            key=lambda a: -1 if is_raster(self._data[a]) else 1
+            key=lambda a: -1 if is_raster(self[a]) else 1
         )
 
     def to_dot(self):
@@ -192,7 +192,7 @@ class RasterSet(object):
                     raise KeyError(name)
             return ret
 
-        if what not in self._data:
+        if what not in self:
             raise KeyError(what)
         return set(transitive(self[what]) + [what])
 
@@ -314,7 +314,7 @@ class RasterSet(object):
         bar.close()
 
     def __repr__(self):
-        return "\n".join([self._data[s].__repr__() for s in self.keys()])
+        return "\n".join([self[s].__repr__() for s in self.keys()])
 
     def tree(self, what):
         def dfs(me):
