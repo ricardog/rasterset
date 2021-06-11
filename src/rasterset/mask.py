@@ -63,7 +63,7 @@ class ShapesMask(MaskBase):
 
     def eval(self, bounds):
         assert self.transform is not None
-        win = from_bounds(*bounds, self.transform)
+        win = window.round(from_bounds(*bounds, self.transform))
         self._mask = rasterio.features.geometry_mask(
             self._shapes,
             transform=self.transform,

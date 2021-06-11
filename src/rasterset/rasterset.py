@@ -177,8 +177,8 @@ class RasterSet(object):
         for col in ctx.sources:
             if ctx.mask is not None:
                 col.mask = ctx.mask.mask
-            col.window = col.reader.window(*ctx.bounds)
-            shapes.append(window.shape(col.window))
+            col.clip(ctx.bounds)
+            shapes.append(col.shape)
         assert len(set(shapes)) == 1, "More than one window size"
         return
 

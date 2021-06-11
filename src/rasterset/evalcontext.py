@@ -1,5 +1,7 @@
 from affine import Affine
 import numpy as np
+from rasterio.crs import CRS
+from rasterio.profiles import DefaultGTiffProfile
 from rasterio.transform import rowcol
 from rasterio.windows import Window
 
@@ -10,7 +12,7 @@ from . import window
 
 
 WORLD_BOUNDS = (-180.0, -90.0, 180.0, 90)
-
+EPSG_4326 = CRS.from_epsg(4326)
 
 class EvalContext(object):
     def __init__(self, rasterset, what, crop=True, bbox=None):
@@ -30,16 +32,16 @@ class EvalContext(object):
         self._needed = sorted(rasterset.find_needed(what), key=lambda x: x.lower())
         self._sources = tuple(filter(lambda c: isinstance(c, Raster),
                                      [rasterset[x] for x in self._needed]))
+        assert self._sources, "No rasters of know size in input set"
 
         # Check all rasters have the same resolution and CRS.
         # TODO: scale/reproject rasters as needed.
-        self._res, self._crs = self.check_rasters(self.sources)
+        self._res, self._crs = self.check_rasters()
+        self._crs = self._crs or EPSG_4326
 
         # Compute bounds as intersection of all raster bounds.
-        self._bounds = bounds.intersection(
-            bbox or WORLD_BOUNDS,
-            *(s.reader.bounds for s in self.sources)
-        )
+        self._bounds = bounds.intersection(bbox or WORLD_BOUNDS,
+                                           *(s.bounds for s in self.sources))
 
         self._mask = mask_maker(rasterset.shapes, rasterset.all_touched,
                                 rasterset.mask, rasterset.maskval)
@@ -50,14 +52,13 @@ class EvalContext(object):
         # Set the affine transform and calculate mask.
         self._transform = (Affine.translation(self.bounds.left,
                                               self.bounds.top) *
-                           Affine.scale(self.res[0], self.res[1] * -1) *
+                           Affine.scale(self.res[0], self.res[1]) *
                            Affine.identity())
         self.mask.transform = self.transform
         self.mask.eval(self.bounds)
         return
 
-    @staticmethod
-    def check_rasters(columns):
+    def check_rasters(self):
         def check_alignment(src):
             x_off = src.transform[2] % src.transform[0]
             y_off = src.transform[5] % abs(src.transform[4])
@@ -65,33 +66,30 @@ class EvalContext(object):
             yy = y_off < 1e-10 or (abs(y_off - abs(src.transform[4])) < 1e-10)
             return xx and yy
 
-        readers = tuple(map(lambda c: c.reader, columns))
-
-        assert readers, "No rasters of know size in input set"
-
-        first = readers[0]
+        first = self.sources[0]
         first_res = first.res
         first_crs = first.crs
         # Verify all rasters either have same CRS or don't have a CRS
-        for reader in readers:
+        for source in self.sources:
             if (first_crs is None or first_crs.to_string() == "") and (
-                reader.crs is not None and reader.crs.to_string() != ""
+                source.crs is not None and source.crs.to_string() != ""
             ):
-                first_crs = reader.crs
-            elif reader.crs is None or reader.crs.to_string() == "":
+                first_crs = source.crs
+            elif source.crs is None or source.crs.to_string() == "":
                 pass
-            elif first_crs != reader.crs:
+            elif first_crs != source.crs:
                 raise RuntimeError(
-                    "%s: crs mismatch (%s != %s)" % (reader.name, first_crs, reader.crs)
+                    "%s: crs mismatch (%s != %s)" % (source.name, first_crs, source.crs)
                 )
-            if not np.allclose(first_res, reader.res):
+            if not np.allclose(first_res, source.res):
+                # FIXME: source no longer has a name attribute
                 raise RuntimeError(
                     "%s: resolution mismatch (%s != %s)"
-                    % (reader.name, first_res, reader.res)
+                    % (source, first_res, source.res)
                 )
-        for col in columns:
-            if not check_alignment(col.reader):
-                print("WARNING: raster %s has unaligned pixels" % col.name)
+        for col in self.sources:
+            if not check_alignment(col):
+                print("WARNING: raster %s has unaligned pixels" % col)
 
         return first_res, first_crs
 
@@ -108,27 +106,17 @@ class EvalContext(object):
         return what in self._needed
 
     def meta(self, args={}):
-        meta = self.sources[0].reader.meta.copy()
-        meta.update(
-            {
-                "driver": "GTiff",
-                "compress": "lzw",
-                "predictor": 3,
-                "nodata": self._nodata,
-                "sparse_ok": "YES",
-            }
-        )
+        meta = DefaultGTiffProfile(count=1,
+                                   dtype=np.float32,
+                                   predictor=3,
+                                   crs=self.crs,
+                                   nodata=self._nodata,
+                                   transform=self.transform,
+                                   width=self.width,
+                                   height=self.height,
+                                   sparse_ok="YES",
+                                   )
         meta.update(args)
-        meta.update(
-            {
-                "count": 1,
-                "crs": self.crs,
-                "transform": self.transform,
-                "height": self.height,
-                "width": self.width,
-                "dtype": np.float32,
-            }
-        )
         return meta
 
     @property

@@ -27,10 +27,12 @@ setup(
     install_requires=[
         "asciitree",
         "Click",
+        "dask",
         "numpy",
         "pandas",
         "r2py @ git+https://github.com/ricardog/r2py.git",
         "rasterio",
+        "rioxarray",
         "setuptools",
         "tqdm",
     ],

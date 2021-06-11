@@ -1,25 +1,19 @@
+import numpy.ma as ma
 from pathlib import Path
-import threading
-import rasterio
-import rasterio.errors
-from rasterio.windows import intersection
+import rasterio.windows as rwindows
+import rioxarray as rxr
 from urllib.parse import urlparse
 
-
-def window_inset(win1, win2):
-    if win2:
-        return intersection(win1, win2)
-    return win1
-
+from . import window
 
 class Raster(object):
     def __init__(self, fname, band=1):
         self._fname = fname
-        self._threadlocal = threading.local()
+        self._rxr = None
         self._band = band
-        self._window = None
         self._mask = None
         self._bbox = None
+        self._window = None
         self._str = None
 
     @property
@@ -43,52 +37,60 @@ class Raster(object):
         return self._bbox
 
     @property
-    def reader(self):
-        if getattr(self._threadlocal, "reader", None) is None:
-            try:
-                self._threadlocal.reader = rasterio.open(self._fname)
-            except (SystemError, rasterio.errors.RasterioIOError):
-                print("Error: opening raster '%s'" % (self._fname))
-                raise SystemError("Error: opening raster '%s'" % (self._fname))
-        return self._threadlocal.reader
+    def res(self):
+        return self.reader.resolution()
 
     @property
-    def window(self):
-        return self._window
-
-    @window.setter
-    def window(self, window):
-        self._window = window
+    def nodata(self):
+        return self._rxr.attrs['_FillValue']
 
     @property
-    def block_shape(self):
-        return self.reader.block_shapes[self._band - 1]
+    def bounds(self):
+        return self.reader.bounds()
+
+    @property
+    def transform(self):
+        return self.reader.transform()
+
+    @property
+    def crs(self):
+        try:
+            return self.reader.crs
+        except rxr.exceptions.MissingCRS:
+            return None
 
     @property
     def dtype(self):
-        return self.reader.dtypes[self._band - 1]
+        return self._rxr.dtype
 
-    def eval(self, df, window=None):
-        assert self.window
-        if window:
-            win = intersection(self.window, window)
-        else:
-            win = self.window
-        try:
-            data = self.reader.read(self._band, window=win, masked=True)
-        except IndexError:
-            print("Error: reading band %d from %s" % (self._band, self._fname))
-            raise IndexError(
-                "Error: reading band %d from %s" % (self._band, self._fname)
-            )
-        if self.mask is not None:
-            if window:
-                data.mask = (
-                    data.mask | self.mask[window.toslices()]
-                )
-            else:
-                data.mask = data.mask | self.mask
-        return data
+    @property
+    def shape(self):
+        return self._rxr[self._band - 1, ...].shape
+
+    @property
+    def reader(self):
+        if self._rxr is None:
+            self._rxr = self.open()
+        return self._rxr.rio
+
+    def open(self):
+        return rxr.open_rasterio(self._fname, parse_coordinates=False,
+                                 chunks='auto')
+
+    def clip(self, bounds):
+        self._window = window.round(rwindows.from_bounds(*bounds,
+                                                         self.transform))
+        self._rxr = self.reader.isel_window(self._window)
+        return
+
+    def eval(self, df, win=None):
+        if win is None:
+            win = self._window
+        data = self.reader.isel_window(win)[self._band - 1]
+        mdata = ma.masked_equal(data.to_masked_array(copy=False),
+                                self.nodata)
+        mdata.mask = mdata.mask | self.mask[win.toslices()]
+        return mdata
 
     def __repr__(self):
         fname = str(self._fname)
