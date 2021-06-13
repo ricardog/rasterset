@@ -4,9 +4,11 @@ import concurrent.futures
 from functools import reduce
 import math
 import multiprocessing
+from pprint import pprint
 
 import asciitree
 import click
+import dask.array as da
 import numpy as np
 import numpy.ma as ma
 import rasterio
@@ -15,7 +17,6 @@ from tqdm import tqdm
 from .evalcontext import EvalContext
 from .raster import Raster
 from .simpleexpr import SimpleExpr
-from . import window
 
 
 def is_raster(x):
@@ -23,6 +24,7 @@ def is_raster(x):
 
 def is_constant(x):
     return isinstance(x, SimpleExpr) and (x.is_constant is not None)
+
 
 class RasterSet(object):
     def __init__(
@@ -43,7 +45,6 @@ class RasterSet(object):
         self._bbox = bbox
         self._crop = crop
         self._all_touched = all_touched
-        self._levels = []
         if data is None:
             self._data = {}
         elif isinstance(data, dict):
@@ -68,7 +69,6 @@ class RasterSet(object):
         elif isinstance(value, str):
             value = SimpleExpr(value)
         self._data[key] = value
-        self._levels = []
 
     def __delitem__(self, key):
         del self._data[key]
@@ -121,24 +121,19 @@ class RasterSet(object):
     def all_touched(self):
         return self._all_touched
 
-    @property
-    def levels(self):
-        if not self._levels:
-            self.compute_order()
-        return self._levels
+    def compute_order(self, what):
+        """Compute a partial ordering of the rasters.  Checks for cycles
+        in the graph as it does the work.
 
-    def compute_order(self):
-        """Compute a partial ordering of the rasters.  Checks for cycles in the
-        graph as it does the work."""
-        if self._levels:
-            return
+        """
         order = {}
         visiting = {}
+        needed = self.find_needed(what)
 
         def visit(name, col):
             if name in order:
                 return
-            me = 0
+            me = 1
             if name in visiting and name not in order:
                 raise RuntimeError("circular dependency")
             visiting[name] = True
@@ -150,16 +145,17 @@ class RasterSet(object):
             order[name] = me
 
         for name, col in self.items():
-            visit(name, col)
+            if name in needed:
+                visit(name, col)
 
         ordered = sorted(order.items(), key=lambda kv: (kv[1], kv[0]))
         nlevels = ordered[-1][1]
-        self._levels = [[] for x in range(nlevels + 1)]
+        levels = [[] for x in range(nlevels + 1)]
         for k, v in ordered:
-            self._levels[v].append(k)
-        self._levels[0].sort(
-            key=lambda a: -1 if is_raster(self[a]) else 1
-        )
+            if not is_raster(self[k]):
+                levels[v].append(k)
+        levels[0] = tuple(filter(lambda k: is_raster(self[k]), self.keys()))
+        return levels
 
     def to_dot(self):
         import pdb; pdb.set_trace()
@@ -197,6 +193,7 @@ class RasterSet(object):
         return set(transitive(self[what]) + [what])
 
     def dropna(self, df):
+        out_df = {}
         namask = reduce(
             np.logical_or,
             map(ma.getmask, df.values()),
@@ -204,8 +201,8 @@ class RasterSet(object):
         )
         for key in df.keys():
             df[key].mask = namask
-            df[key] = df[key].compressed()
-        return namask
+            out_df[key] = df[key].compressed()
+        return out_df, namask
 
     def reflate(self, namask, data):
         arr = ma.empty_like(namask, dtype=np.float32)
@@ -215,10 +212,10 @@ class RasterSet(object):
 
     def _eval(self, ctx, window=None):
         # Compute partial order in which to evaluate rasters
-        self.compute_order()
+        levels = self.compute_order(ctx.what)
 
         df = {}
-        for idx, level in enumerate(self._levels):
+        for idx, level in enumerate(levels):
             if ctx.msgs:
                 click.echo("Level %d" % idx)
             for name in level:
@@ -232,28 +229,60 @@ class RasterSet(object):
                     else:
                         df[name] = self[name].eval(df)
             if idx == 0:
-                namask = self.dropna(df)
+                df, namask = self.dropna(df)
         data = ma.empty_like(namask, dtype=np.float32)
         data.mask = namask
         data[~namask] = df[ctx.what]
-        if False:
-            import pdb; pdb.set_trace()
-            import pandas as pd
-            dframe = pd.DataFrame(df)
-            # import projections.pd_utils as pd_utils
-            dframe.to_pickle("evaled.pyd")
-        if False:
-            import pandas as pd
-            dframe = pd.DataFrame(df)
-            df2 = {}
-            for k in df.keys():
-                tmp = ma.empty_like(namask, dtype=np.float32)
-                tmp.mask = namask
-                tmp[~namask] = df[k]
-                df2[k] = tmp
-            dframe = pd.DataFrame(df2)
-            dframe.to_csv("evaled.csv")
         return data
+
+    def _eval2(self, df, levels):
+        for idx, level in enumerate(levels):
+            if idx == 0:
+                continue
+            for name in level:
+                df[name] = self[name].eval(df)
+        return df
+
+    def meval(self, what, levels, names=None, *arrays, block_info=None):
+        print("in meval")
+        assert len(set([type(x) for x in arrays])) == 1
+        if block_info:
+            pprint(block_info)
+            pass
+        else:
+            return ma.empty_like(arrays[0])
+        df = dict([(name, arr.reshape(-1))
+                   for name, arr in zip(names, arrays)])
+        df, namask = self.dropna(df)
+        shape = arrays[0].shape
+        df = self._eval2(df, levels)
+        return self.reflate(namask, df[what]).reshape(shape)
+
+    def build_dataset(self, level_0):
+        df = {}
+        first = True
+        for name in level_0:
+            assert is_raster(self[name])
+            if first and self.shapes is not None:
+                first = False
+                shapes = [feature["geometry"] for feature in self.shapes]
+                arr = self[name].reader.rio.clip(shapes, self[name].crs,
+                                                 drop=True,
+                                                 from_disk=True)
+            else:
+                arr = self[name].array
+            df[name] = da.ma.masked_equal(arr, arr.attrs['_FillValue'])
+        names, arrays = zip(*df.items())
+        return names, arrays
+
+    def build(self, what):
+        ctx = EvalContext(self, what, crop=self.crop, bbox=self.bbox)
+        self.set_props(ctx)
+        # Compute partial order in which to evaluate rasters
+        levels = self.compute_order(what)
+        names, arrays = self.build_dataset(levels[0])
+        graph = da.map_blocks(self.meval, what, levels, names, *arrays)
+        return graph, ctx.meta()
 
     def eval(self, what, quiet=False, args={}):
         ctx = EvalContext(self, what, crop=self.crop, bbox=self.bbox)

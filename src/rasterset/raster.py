@@ -38,7 +38,7 @@ class Raster(object):
 
     @property
     def res(self):
-        return self.reader.resolution()
+        return self.reader.rio.resolution()
 
     @property
     def nodata(self):
@@ -46,16 +46,16 @@ class Raster(object):
 
     @property
     def bounds(self):
-        return self.reader.bounds()
+        return self.reader.rio.bounds()
 
     @property
     def transform(self):
-        return self.reader.transform()
+        return self.reader.rio.transform()
 
     @property
     def crs(self):
         try:
-            return self.reader.crs
+            return self.reader.rio.crs
         except rxr.exceptions.MissingCRS:
             return None
 
@@ -68,10 +68,14 @@ class Raster(object):
         return self._rxr[self._band - 1, ...].shape
 
     @property
+    def array(self):
+        return self._rxr
+
+    @property
     def reader(self):
         if self._rxr is None:
             self._rxr = self.open()
-        return self._rxr.rio
+        return self._rxr
 
     def open(self):
         return rxr.open_rasterio(self._fname, parse_coordinates=False,
@@ -80,13 +84,14 @@ class Raster(object):
     def clip(self, bounds):
         self._window = window.round(rwindows.from_bounds(*bounds,
                                                          self.transform))
-        self._rxr = self.reader.isel_window(self._window)
+        #import pdb; pdb.set_trace()
+        self._rxr = self.reader.rio.isel_window(self._window)
         return
 
     def eval(self, df, win=None):
         if win is None:
             win = self._window
-        data = self.reader.isel_window(win)[self._band - 1]
+        data = self.reader.rio.isel_window(win)[self._band - 1]
         mdata = ma.masked_equal(data.to_masked_array(copy=False),
                                 self.nodata)
         mdata.mask = mdata.mask | self.mask[win.toslices()]
