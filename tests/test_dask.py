@@ -1,6 +1,7 @@
 import fiona
 import numpy as np
 from pathlib import Path
+
 from rasterset import Raster, RasterSet, SimpleExpr
 
 dir_path = Path(__file__).parent
@@ -18,8 +19,10 @@ def test_dask():
     assert meta['width'] == 1436
     assert meta['height'] == 344
     data = graph.compute()
+    if len(data.shape) == 3:
+        data = data.squeeze()
     # Need to exclude Puerto Rico and some other cell @ 158, 1292.
-    assert np.allclose(data.squeeze()[0:137, :], 840 + 1 + np.log(2))
+    assert np.allclose(data[0:137, :], 840 + 1 + np.log(2))
     return
 
 
@@ -36,6 +39,8 @@ def test_dask_mask():
     assert meta['width'] == 1436
     assert meta['height'] == 344
     data = graph.compute()
+    if len(data.shape) == 3:
+        data = data.squeeze()
     # Need to exclude Puerto Rico and some other cell @ 158, 1292.
-    assert np.allclose(data.squeeze()[0:137, :], 840 + 1 + np.log(2))
+    assert np.allclose(data[0:137, :], 840 + 1 + np.log(2))
     return
