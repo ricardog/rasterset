@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from . import window
 
 class Raster(object):
-    def __init__(self, fname, band=1):
+    def __init__(self, fname, band=1, **open_kwargs):
         self._fname = fname
         self._rxr = None
         self._band = band
@@ -15,7 +15,15 @@ class Raster(object):
         self._bbox = None
         self._window = None
         self._str = None
+        self._open_kwargs = open_kwargs
 
+    @classmethod
+    def from_dataarray(cls, fname, data, band=1):
+        obj = cls(fname)
+        obj._band = band
+        obj._rxr = data
+        return obj
+        
     @property
     def syms(self):
         return []
@@ -59,13 +67,18 @@ class Raster(object):
         except rxr.exceptions.MissingCRS:
             return None
 
+    @crs.setter
+    def crs(self, crs):
+        self._rxr = self.reader.rio.write_crs(crs)
+        return
+
     @property
     def dtype(self):
         return self._rxr.dtype
 
     @property
     def shape(self):
-        return self._rxr[self._band - 1, ...].shape
+        return self._rxr.shape
 
     @property
     def array(self):
@@ -78,8 +91,8 @@ class Raster(object):
         return self._rxr
 
     def open(self):
-        return rxr.open_rasterio(self._fname, parse_coordinates=False,
-                                 chunks='auto')
+        return rxr.open_rasterio(self._fname, chunks='auto',
+                                 **self._open_kwargs)
 
     def clip(self, bounds):
         self._window = window.round(rwindows.from_bounds(*bounds,

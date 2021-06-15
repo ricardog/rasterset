@@ -12,7 +12,9 @@ import dask.array as da
 import numpy as np
 import numpy.ma as ma
 import rasterio
+import rioxarray as rxr
 from tqdm import tqdm
+import xarray as xa
 
 from .evalcontext import EvalContext
 from .raster import Raster
@@ -89,6 +91,19 @@ class RasterSet(object):
     def items(self):
         return self._data.items()
 
+    def update(self, other, fname=None):
+        if fname is None:
+            fname = '/dummy/file/name.nc'
+        if isinstance(other, xa.Dataset):
+            for key, data in other.items():
+                ds_name = f"netcdf:{fname}:{key}"
+                self[key] = Raster.from_dataarray(ds_name, data)
+        elif isinstance(other, dict):
+            self._data.update(other)
+        else:
+            raise RuntimeError("'other' in update must be dict or Dataset")
+        return
+
     @property
     def mask(self):
         return self._mask
@@ -154,7 +169,7 @@ class RasterSet(object):
         for k, v in ordered:
             if not is_raster(self[k]):
                 levels[v].append(k)
-        levels[0] = tuple(filter(lambda k: is_raster(self[k]), self.keys()))
+        levels[0] = tuple(filter(lambda k: is_raster(self[k]), needed))
         return levels
 
     def to_dot(self):
@@ -173,6 +188,8 @@ class RasterSet(object):
         for col in ctx.sources:
             if ctx.mask is not None:
                 col.mask = ctx.mask.mask
+            if col.crs is None:
+                col.crs = ctx.crs
             col.clip(ctx.bounds)
             shapes.append(col.shape)
         assert len(set(shapes)) == 1, "More than one window size"
@@ -247,7 +264,7 @@ class RasterSet(object):
         print("in meval")
         assert len(set([type(x) for x in arrays])) == 1
         if block_info:
-            pprint(block_info)
+            pprint(block_info[None])
             pass
         else:
             return ma.empty_like(arrays[0])
@@ -260,20 +277,35 @@ class RasterSet(object):
 
     def build_dataset(self, level_0):
         df = {}
-        first = True
+        level_0 = list(level_0)
+        name = level_0.pop(0)
+        arr = self[name].reader
+        if self.shapes is not None:
+            shapes = [feature["geometry"] for feature in self.shapes]
+            arr = arr.rio.clip(shapes, self[name].crs, drop=False,
+                               from_disk=True)
+        ds = xa.Dataset({name: arr})
+        #import pdb; pdb.set_trace()
         for name in level_0:
+            ds = ds.merge(xa.Dataset({name: self[name].reader.squeeze()}))
+            #print(f"{name}: {self[name].reader.shape}")
+        for name in ds.keys():
+            arr = ds[name].data
+            df[name] = da.ma.masked_equal(arr, ds[name].attrs['_FillValue'])
+        for name in ():#level_0:
             assert is_raster(self[name])
             if first and self.shapes is not None:
                 first = False
                 shapes = [feature["geometry"] for feature in self.shapes]
                 arr = self[name].reader.rio.clip(shapes, self[name].crs,
-                                                 drop=True,
+                                                 drop=False,
                                                  from_disk=True)
             else:
                 arr = self[name].array
+            print(f"{name}: {arr.shape}")
             df[name] = da.ma.masked_equal(arr, arr.attrs['_FillValue'])
         names, arrays = zip(*df.items())
-        return names, arrays
+        return names, da.broadcast_arrays(*arrays)
 
     def build(self, what):
         ctx = EvalContext(self, what, crop=self.crop, bbox=self.bbox)
@@ -341,6 +373,16 @@ class RasterSet(object):
                         out = future.result()
                         dst.write(out.filled(meta["nodata"]), window=win, indexes=1)
         bar.close()
+        return
+
+    def open_netcdf(self, fname, **open_kwargs):
+        import pdb; pdb.set_trace()
+        ds = rxr.open_rasterio(fname, chunks='auto', **open_kwargs)
+        if not isinstance(ds, list):
+            ds = [ds]
+        for group in ds:
+            self.update(group)
+        return
 
     def __repr__(self):
         return "\n".join([self[s].__repr__() for s in self.keys()])
