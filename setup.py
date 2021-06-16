@@ -26,9 +26,11 @@ setup(
     include_package_data=True,
     install_requires=[
         "asciitree",
+        "blosc",
         "cftime",
         "Click",
-        "dask",
+        "dask[distributed]",
+        "lz4",
         "numpy",
         "pandas",
         "r2py @ git+https://github.com/ricardog/r2py.git",
