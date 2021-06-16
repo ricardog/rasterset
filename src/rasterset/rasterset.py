@@ -275,44 +275,31 @@ class RasterSet(object):
         df = self._eval2(df, levels)
         return self.reflate(namask, df[what]).reshape(shape)
 
-    def build_dataset(self, level_0):
+    def build_dataset(self, ctx, level_0):
         df = {}
         level_0 = list(level_0)
         name = level_0.pop(0)
         arr = self[name].reader
-        if self.shapes is not None:
-            shapes = [feature["geometry"] for feature in self.shapes]
-            arr = arr.rio.clip(shapes, self[name].crs, drop=False,
+        if ctx.mask.shapes is not None:
+            arr = arr.rio.clip(ctx.mask.shapes, self[name].crs, drop=False,
                                from_disk=True)
         ds = xa.Dataset({name: arr})
-        #import pdb; pdb.set_trace()
         for name in level_0:
             ds = ds.merge(xa.Dataset({name: self[name].reader.squeeze()}))
             #print(f"{name}: {self[name].reader.shape}")
         for name in ds.keys():
             arr = ds[name].data
             df[name] = da.ma.masked_equal(arr, ds[name].attrs['_FillValue'])
-        for name in ():#level_0:
-            assert is_raster(self[name])
-            if first and self.shapes is not None:
-                first = False
-                shapes = [feature["geometry"] for feature in self.shapes]
-                arr = self[name].reader.rio.clip(shapes, self[name].crs,
-                                                 drop=False,
-                                                 from_disk=True)
-            else:
-                arr = self[name].array
-            print(f"{name}: {arr.shape}")
-            df[name] = da.ma.masked_equal(arr, arr.attrs['_FillValue'])
         names, arrays = zip(*df.items())
         return names, da.broadcast_arrays(*arrays)
 
     def build(self, what):
         ctx = EvalContext(self, what, crop=self.crop, bbox=self.bbox)
+        self._shapes = None
         self.set_props(ctx)
         # Compute partial order in which to evaluate rasters
         levels = self.compute_order(what)
-        names, arrays = self.build_dataset(levels[0])
+        names, arrays = self.build_dataset(ctx, levels[0])
         graph = da.map_blocks(self.meval, what, levels, names, *arrays)
         return graph, ctx.meta()
 

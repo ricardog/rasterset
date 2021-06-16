@@ -4,7 +4,7 @@ import numpy.ma as ma
 import rasterio.features
 from rasterio.windows import from_bounds
 
-from . import window
+from . import bounds, window
 
 
 WORLD_BOUNDS = (-180.0, -90.0, 180.0, 90)
@@ -28,6 +28,10 @@ class MaskBase:
     @property
     def mask(self):
         return self._mask
+
+    @property
+    def shapes(self):
+        return None
 
     @property
     def transform(self):
@@ -57,9 +61,13 @@ class ShapesMask(MaskBase):
         self._all_touched = all_touched
         self._bounds = getattr(shapes, 'bounds', None)
         if not self._bounds:
-            self._bounds = window.union(shapes)
+            self._bounds = bounds.union(shapes)
         self._shapes = [feature["geometry"] for feature in shapes]
         return
+
+    @property
+    def shapes(self):
+        return self._shapes
 
     def eval(self, bounds):
         assert self.transform is not None
