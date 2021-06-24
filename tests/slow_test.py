@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import datetime
 import os
 from pathlib import Path
@@ -28,7 +30,7 @@ OUTDIR = os.environ.get("OUTDIR", "/mnt/predicts")
 dir_path = Path(__file__).parent
 
 
-def get_client(addr):
+def get_client(addr=None):
     if addr is None:
         print("Local cluster")
         client = Client()
@@ -81,7 +83,9 @@ def test_dask_luh2():
 
     client = get_client('')
     print(f"Dashboard link: {client.dashboard_link}")
-    client.upload_file(f"{OUTDIR}/models/natgeo/cs_crop_simplemod.py")
+    # TODO: Uploading the model file causes it to be recompiled by
+    # numba.  Figure out how to conditionally upload if not present.
+    # client.upload_file(f"{OUTDIR}/models/natgeo/cs_crop_simplemod.py")
     graph, meta = rs.build("out")
     assert meta["width"] == 1436
     assert meta["height"] == 344
@@ -90,4 +94,13 @@ def test_dask_luh2():
     assert data.shape == (86, 344, 1436)
     assert np.allclose(data.max(), 2.300597)
     assert np.allclose(data.min(), -6.634878)
+
+    # Get data transfor information from the workers.
+    # client.run(lambda dask_worker: dask_worker.outgoing_transfer_log)
+    # client.run(lambda dask_worker: dask_worker.incoming_transfer_log)
+    
     return
+
+if __name__ == '__main__':
+    test_dask_luh2()
+
