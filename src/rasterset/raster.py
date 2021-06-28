@@ -20,7 +20,7 @@ from xarray.core import indexing
 from xarray.core.dataarray import DataArray
 from xarray.core.utils import is_scalar
 
-from . import window
+from .windows import round_window
 
 
 if LooseVersion(dask.__version__) < LooseVersion("0.18.0"):
@@ -468,7 +468,7 @@ class Raster(object):
         obj._block_shape = self._block_shape
         obj._dtype = self._dtype
         obj._bounds = bounds
-        win = window.round(rwindows.from_bounds(*bounds,
+        win = round_window(rwindows.from_bounds(*bounds,
                                                 obj.transform))
         obj._transform = rwindows.transform(win, obj.transform)
         rows, cols = win.toslices()
@@ -484,7 +484,7 @@ class Raster(object):
 
     def eval(self, df=None, win=None):
         if win is None:
-            win = window.round(rwindows.from_bounds(*self.bounds,
+            win = round_window(rwindows.from_bounds(*self.bounds,
                                                     self.transform))
         rows, cols = win.toslices()
         data = self.asarray().isel({'y': rows, 'x': cols})

@@ -4,8 +4,8 @@ import numpy.ma as ma
 import rasterio.features
 from rasterio.windows import from_bounds
 
-from . import bounds, window
-
+from . import bounds
+from .windows import round_window, window_shape
 
 WORLD_BOUNDS = (-180.0, -90.0, 180.0, 90)
 
@@ -51,7 +51,7 @@ class NullMask(MaskBase):
 
     def eval(self, bounds):
         win = from_bounds(*bounds, self.transform)
-        self._mask = np.full(window.shape(win), 0, dtype='uint8')
+        self._mask = np.full(window_shape(win), 0, dtype='uint8')
         return
 
 
@@ -71,12 +71,12 @@ class ShapesMask(MaskBase):
 
     def eval(self, bounds):
         assert self.transform is not None
-        win = window.round(from_bounds(*bounds, self.transform))
+        win = round_window(from_bounds(*bounds, self.transform))
         self._mask = rasterio.features.geometry_mask(
             self._shapes,
             transform=self.transform,
             invert=False,
-            out_shape=window.shape(win),
+            out_shape=window_shape(win),
             all_touched=self._all_touched,
         )
         return

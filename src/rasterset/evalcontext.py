@@ -8,7 +8,7 @@ from rasterio.windows import Window
 from .mask import mask_maker
 from . import Raster
 from . import bounds
-from . import window
+from .windows import round_window, window_shape
 
 
 WORLD_BOUNDS = (-180.0, -90.0, 180.0, 90)
@@ -154,7 +154,7 @@ class EvalContext(object):
         row_start, row_stop = min(rows), max(rows)
         col_start, col_stop = min(cols), max(cols)
 
-        self._window = window.round(Window(
+        self._window = round_window(Window(
             col_off=col_start,
             row_off=row_start,
             width=max(col_stop - col_start, 0.0),
@@ -166,7 +166,7 @@ class EvalContext(object):
     def shape(self):
         if self._shape is not None:
             return self._shape
-        self._shape = window.shape(self.window)
+        self._shape = window_shape(self.window)
         return self._shape
 
     @property
