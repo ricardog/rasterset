@@ -9,6 +9,7 @@ import numpy.ma as ma
 import rasterio
 from rasterio.crs import CRS
 from rasterio.errors import NotGeoreferencedWarning
+import rasterio.windows as rwindows
 from rioxarray.rioxarray import _generate_spatial_coords
 from urllib.parse import urlparse
 from xarray import IndexVariable
@@ -334,10 +335,6 @@ class RasterArrayWrapper(BackendArray):
 class Raster(object):
     def __init__(self, fname, bands=None, **open_kwargs):
         self._fname = fname
-        self._read_bounds = None
-        self._read_window = None
-        self._read_transform = None
-        self._read_data = None
         self._str = None
         self._lock = SerializableLock()
 
@@ -391,9 +388,9 @@ class Raster(object):
         self._bounds = riods.bounds
         self._height = riods.height
         self._width = riods.width
-        self._res = riods.res
         self._nodata = riods.nodata
         self._crs = riods.crs or CRS.from_epsg(4326)
+        self._dtype = np.dtype(riods.dtypes[0])
         try:
             self._transform = riods.transform
         except AttributeError:
@@ -402,12 +399,13 @@ class Raster(object):
         if self.transform is None:
             raise RuntimeError("Raster %s doesn't have a geo transform" %
                                self._fname)
-        block_shape = (1,) + riods.block_shapes[0]
+        assert len(set(riods.block_shapes)) == 1, "Raster has multiple block shapes"
+        self._block_shape = (1,) + riods.block_shapes[0]
         self._chunks = normalize_chunks(
             chunks=(1, "auto", "auto"),
             shape=(riods.count, riods.height, riods.width),
             dtype=riods.dtypes[0],
-            previous_chunks=tuple((c,) for c in block_shape),
+            previous_chunks=tuple((c,) for c in self._block_shape),
         )
         name = attrs.pop("NETCDF_VARNAME", None)
         data = indexing.LazilyIndexedArray(
@@ -462,25 +460,61 @@ class Raster(object):
     def chunks(self):
         return self._chunks
 
-    def clip(self, *bounds):
-        self._read_bounds = bounds
-        self._read_window = window.from_bounds(*bounds, self.transform)
-        self._read_transform = window.transform(self._read_windows,
-                                                self.transform)
-        rows, cols = self._read_window.toslices()
-        self._read_data = self._data.isel({'y': rows, 'x': cols}).copy()
-        return
-
-    def eval(self, df, win=None):
-        if win is None:
-            win = window.round(window.from_bounds(*self.bounds,
-                                                  self.transform))
-        rows, cols = win.toslices()
-        if self._read_data:
-            data = self._read_data.isel({'y': rows, 'x': cols})
+    def clip(self, bounds, inplace=False):
+        if inplace:
+            obj = self
         else:
-            data = self._data.isel({'y': rows, 'x': cols})
-        return ma.masked_equal(data, self.nodata)
+            obj = self.copy()
+        obj._block_shape = self._block_shape
+        obj._dtype = self._dtype
+        obj._bounds = bounds
+        win = window.round(rwindows.from_bounds(*bounds,
+                                                obj.transform))
+        obj._transform = rwindows.transform(win, obj.transform)
+        rows, cols = win.toslices()
+        obj._data = obj._data.isel({'y': rows, 'x': cols}).copy()
+        _, obj._height, obj._width = obj._data.shape
+        obj._chunks = normalize_chunks(
+            chunks=(1, "auto", "auto"),
+            shape=(len(obj._bands), obj._height, obj._width),
+            dtype=obj._dtype,
+            previous_chunks=tuple((c,) for c in self._block_shape),
+        )
+        return obj
+
+    def eval(self, df=None, win=None):
+        if win is None:
+            win = window.round(rwindows.from_bounds(*self.bounds,
+                                                    self.transform))
+        rows, cols = win.toslices()
+        data = self.asarray().isel({'y': rows, 'x': cols})
+        mdata = ma.masked_equal(data, self.nodata)
+        return mdata
+
+    def asarray(self):
+        return self._data
+
+    def copy(self):
+        return self.__copy__()
+
+    def __copy__(self):
+        obj = object.__new__(self.__class__)
+        obj._str = None
+        obj._fname = self._fname
+        obj._lock = self._lock
+        obj._manager = self._manager
+        obj._bounds = self._bounds
+        obj._transform = self._transform
+        obj._bands = self._bands
+        obj._count = self._count
+        obj._width = self._height
+        obj._height = self._width
+        obj._nodata = self._nodata
+        obj._crs = self._crs
+        obj._chunks = self._chunks
+        obj._name = self._name
+        obj._data = self._data.copy()
+        return obj
 
     def __repr__(self):
         fname = str(self._fname)

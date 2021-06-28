@@ -9,20 +9,25 @@ from pprint import pprint
 import asciitree
 import click
 import dask.array as da
+from dask.base import tokenize
 import numpy as np
 import numpy.ma as ma
 import rasterio
 import rioxarray as rxr
 from tqdm import tqdm
 import xarray as xa
+from xarray.core import indexing
+from xarray.core.dataarray import DataArray
 
 from .evalcontext import EvalContext
 from .raster import Raster
 from .simpleexpr import SimpleExpr
+from .wrapper import RastersetArrayWrapper
 
 
 def is_raster(x):
     return isinstance(x, Raster)
+
 
 def is_constant(x):
     return isinstance(x, SimpleExpr) and (x.is_constant is not None)
@@ -47,6 +52,7 @@ class RasterSet(object):
         self._bbox = bbox
         self._crop = crop
         self._all_touched = all_touched
+        self._dtype = np.dtype('float32')                   # FIXME
         if data is None:
             self._data = {}
         elif isinstance(data, dict):
@@ -136,6 +142,10 @@ class RasterSet(object):
     def all_touched(self):
         return self._all_touched
 
+    @property
+    def dtype(self):
+        return self._dtype
+
     def compute_order(self, what):
         """Compute a partial ordering of the rasters.  Checks for cycles
         in the graph as it does the work.
@@ -186,11 +196,7 @@ class RasterSet(object):
     def set_props(self, ctx):
         shapes = []
         for col in ctx.sources:
-            if ctx.mask is not None:
-                col.mask = ctx.mask.mask
-            if col.crs is None:
-                col.crs = ctx.crs
-            col.clip(ctx.bounds)
+            col.clip(ctx.bounds, inplace=True)
             shapes.append(col.shape)
         assert len(set(shapes)) == 1, "More than one window size"
         return
@@ -242,7 +248,12 @@ class RasterSet(object):
                     if idx == 0:
                         # First level sources must be able to subset the
                         # input via the window parameter.
-                        df[name] = self[name].eval(df, window)
+                        mdata = self[name].eval(df, window)
+                        if window:
+                            mdata.mask = mdata.mask | ctx.mask.mask[window.toslices()]
+                        else:
+                            mdata.mask = mdata.mask | ctx.mask.mask
+                        df[name] = mdata
                     else:
                         df[name] = self[name].eval(df)
             if idx == 0:
@@ -286,16 +297,29 @@ class RasterSet(object):
         ds = xa.Dataset({name: arr})
         for name in level_0:
             ds = ds.merge(xa.Dataset({name: self[name].reader.squeeze()}))
-            #print(f"{name}: {self[name].reader.shape}")
         for name in ds.keys():
             arr = ds[name].data
             df[name] = da.ma.masked_equal(arr, ds[name].attrs['_FillValue'])
         names, arrays = zip(*df.items())
         return names, da.broadcast_arrays(*arrays)
 
+    def build2(self, what):
+        wrapper = RastersetArrayWrapper(what, self, crop=self.crop,
+                                        dtype=self.dtype)
+        ds = wrapper.dataset()
+        data = indexing.LazilyIndexedArray(wrapper)
+        # FIXME: should the array be writeable?
+        # data = indexing.CopyOnWriteArray(data)
+        result = DataArray(data=data, dims=wrapper.dims,
+                           coords=wrapper.coords, attrs=ds.attrs, name=what)
+        result.attrs['_FillValue'] = wrapper.fill_value
+        token = tokenize(what, wrapper.chunks)
+        name_prefix = "rasterset-%s" % token
+        return result.chunk(wrapper.chunks, name_prefix=name_prefix,
+                            token=token), wrapper.meta()
+
     def build(self, what):
         ctx = EvalContext(self, what, crop=self.crop, bbox=self.bbox)
-        self._shapes = None
         self.set_props(ctx)
         # Compute partial order in which to evaluate rasters
         levels = self.compute_order(what)

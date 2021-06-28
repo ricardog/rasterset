@@ -18,7 +18,7 @@ def test_mask():
     assert meta['width'] == 1436
     assert meta['height'] == 344
     # Need to exclude Puerto Rico and some other cell @ 158, 1292.
-    assert np.allclose(data[0:137, :], 840 + 1 + np.log(2))
+    assert np.allclose(data[0, 0:137, :], 840 + 1 + np.log(2))
     return
 
 

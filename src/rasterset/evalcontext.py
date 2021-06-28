@@ -37,7 +37,7 @@ class EvalContext(object):
         # Check all rasters have the same resolution and CRS.
         # TODO: scale/reproject rasters as needed.
         self._res, self._crs = self.check_rasters()
-        self._crs = self._crs or EPSG_4326
+        assert self._crs is not None
 
         # Compute bounds as intersection of all raster bounds.
         self._bounds = bounds.intersection(bbox or WORLD_BOUNDS,

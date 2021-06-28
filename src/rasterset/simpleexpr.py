@@ -4,6 +4,7 @@ import numpy.ma as ma
 import r2py.reval as reval
 import r2py.rparser as rparser
 
+
 class SimpleExpr(object):
     def __init__(self, expr=None):
         self.tree = reval.make_inputs(rparser.parse(expr))
@@ -23,6 +24,10 @@ class SimpleExpr(object):
     @property
     def is_constant(self):
         return reval.is_constant(self.tree)
+
+    def asarray(self):
+        assert self.is_constant, "can only be called for constant expressions"
+        return np.array([self.is_constant], dtype='float32')
 
     def eval(self, df, window=None):
         try:

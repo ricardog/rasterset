@@ -1,5 +1,3 @@
-from rasterio.windows import from_bounds                    # noqa F401
-
 
 def shape(win):
     return (int(win.height), int(win.width))
@@ -7,6 +5,7 @@ def shape(win):
 
 def round(win):
     return win.round_offsets('floor').round_lengths('ceil')
+
 
 def inset(outter, inner):
     assert inner.col_off < outter.width
