@@ -1,6 +1,8 @@
+from functools import reduce
 
 from affine import Affine
 import numpy as np
+import numpy.ma as ma
 from rasterio.crs import CRS
 from rasterio.profiles import DefaultGTiffProfile
 import rasterio.windows as rwindows
@@ -16,7 +18,6 @@ from .simpleexpr import SimpleExpr
 from . import bounds
 
 
-WORLD_BOUNDS = (-180.0, -90.0, 180.0, 90)
 EPSG_4326 = CRS.from_epsg(4326)
 
 
@@ -77,6 +78,19 @@ def _compute_order(needed, items):
     return levels
 
 
+def _dropna(df):
+    out_df = {}
+    namask = reduce(
+        np.logical_or,
+        map(ma.getmask, df.values()),
+        np.zeros(tuple(df.values())[0].shape),
+    )
+    for key in df.keys():
+        df[key].mask = namask
+        out_df[key] = df[key].compressed()
+    return out_df, namask
+
+
 class RastersetArrayWrapper(BackendArray):
     """A wrapper around rasterio dataset objects"""
     def __init__(self, name, rasterset, crop=True, bbox=None, dtype='float32'):
@@ -109,7 +123,7 @@ class RastersetArrayWrapper(BackendArray):
             if not _check_alignment(src):
                 raise RuntimeError(f"Raster {src} is not aligned")
         # Compute bounds as intersection of all raster bounds.
-        self._bounds = bounds.intersection(bbox or WORLD_BOUNDS,
+        self._bounds = bounds.intersection(bbox or bounds.WORLD_BOUNDS,
                                            *(s.bounds for s in self._sources))
 
         self._mask = mask_maker(rasterset.shapes, rasterset.all_touched,
@@ -144,13 +158,6 @@ class RastersetArrayWrapper(BackendArray):
         self._dims = self._sources[0].asarray().dims
         self._coords = self._sources[0].asarray().coords
         self._levels = _compute_order(self._needed, self._columns.items())
-
-#        self._dataset = self._dataset.update(
-#            dict([(name, DataArray(np.broadcast_to(src.asarray(), self.shape,
-#                                                   subok=True),
-#                                   dims=self.dims, coords=self.coords))
-#                  for name, src in rasterset.items()
-#                  if is_constant(src)]))
         return
 
     @property
@@ -303,7 +310,12 @@ class RastersetArrayWrapper(BackendArray):
                     df[name] = mdata
                 else:
                     df[name] = self._columns[name].eval(df)
-        return df[self._name]
+            if idx == 0:
+                df, namask = _dropna(df)
+        data = ma.empty_like(namask, dtype=self.dtype)
+        data.mask = namask
+        data[~namask] = df[self._name]
+        return data
 
     def _getitem(self, key):
         band_key, window, squeeze_axis, np_inds = self._get_indexer(key)

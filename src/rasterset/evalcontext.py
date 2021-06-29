@@ -11,7 +11,6 @@ from . import bounds
 from .windows import round_window, window_shape
 
 
-WORLD_BOUNDS = (-180.0, -90.0, 180.0, 90)
 EPSG_4326 = CRS.from_epsg(4326)
 
 class EvalContext(object):
@@ -40,7 +39,7 @@ class EvalContext(object):
         assert self._crs is not None
 
         # Compute bounds as intersection of all raster bounds.
-        self._bounds = bounds.intersection(bbox or WORLD_BOUNDS,
+        self._bounds = bounds.intersection(bbox or bounds.WORLD_BOUNDS,
                                            *(s.bounds for s in self.sources))
 
         self._mask = mask_maker(rasterset.shapes, rasterset.all_touched,
