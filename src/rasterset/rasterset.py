@@ -100,14 +100,14 @@ class RasterSet(object):
     def update(self, other, fname=None):
         if fname is None:
             fname = '/dummy/file/name.nc'
-        if isinstance(other, xa.Dataset):
+        if isinstance(other, xa.Dataset) and hasattr(other, 'rio'):
             for key, data in other.items():
-                ds_name = f"netcdf:{fname}:{key}"
-                self[key] = Raster.from_dataarray(ds_name, data)
+                self[key] = Raster.from_dataarray(data)
         elif isinstance(other, dict):
             self._data.update(other)
         else:
-            raise RuntimeError("'other' in update must be dict or Dataset")
+            raise RuntimeError("'other' in update must be dict or "
+                               "rioxarray Dataset")
         return
 
     @property

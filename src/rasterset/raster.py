@@ -16,9 +16,11 @@ from xarray import IndexVariable
 from xarray.backends.common import BackendArray
 from xarray.backends.file_manager import CachingFileManager
 from xarray.backends.locks import SerializableLock
+from xarray.coding import times, variables
 from xarray.core import indexing
 from xarray.core.dataarray import DataArray
 from xarray.core.utils import is_scalar
+from xarray.core.variable import as_variable
 
 from .windows import round_window
 
@@ -164,6 +166,23 @@ def _get_rasterio_attrs(riods):
     return attrs
 
 
+def _load_netcdf_attrs(tags, data_array):
+    """
+    Loads the netCDF attributes into the data array
+
+    Attributes stored in this format:
+    - variable_name#attr_name: attr_value
+    """
+    for key, value in tags.items():
+        key, value = _parse_tag(key, value)
+        key_split = key.split("#")
+        if len(key_split) != 2:
+            continue
+        variable_name, attr_name = key_split
+        if variable_name in data_array.coords:
+            data_array.coords[variable_name].attrs.update({attr_name: value})
+
+
 def _load_netcdf_1d_coords(tags):
     """
     Dimension information:
@@ -188,6 +207,43 @@ def _load_netcdf_1d_coords(tags):
             dim_name, np.fromstring(dim_values, dtype=dim_dtype, sep=",")
         )
     return coords
+
+
+def _decode_datetime_cf(data_array, decode_times, decode_timedelta):
+    """
+    Decide the datetime based on CF conventions
+    """
+    if decode_timedelta is None:
+        decode_timedelta = decode_times
+
+    for coord in data_array.coords:
+        time_var = None
+        if decode_times and "since" in data_array[coord].attrs.get("units", ""):
+            time_var = times.CFDatetimeCoder(use_cftime=True).decode(
+                as_variable(data_array[coord]), name=coord
+            )
+        elif (
+            decode_timedelta
+            and data_array[coord].attrs.get("units") in times.TIME_UNITS
+        ):
+            time_var = times.CFTimedeltaCoder().decode(
+                as_variable(data_array[coord]), name=coord
+            )
+        if time_var is not None:
+            dimensions, data, attributes, encoding = variables.unpack_for_decoding(
+                time_var
+            )
+            data_array = data_array.assign_coords(
+                {
+                    coord: IndexVariable(
+                        dims=dimensions,
+                        data=data,
+                        attrs=attributes,
+                        encoding=encoding,
+                    )
+                }
+            )
+    return data_array
 
 
 def _parse_driver_tags(riods, attrs, coords):
@@ -318,8 +374,9 @@ class RasterArrayWrapper(BackendArray):
 
     def _getitem(self, key):
         band_key, window, squeeze_axis, np_inds = self._get_indexer(key)
+        # print(f"raster {self._name} processing window {band_key}: {window}")
         with self._lock:
-            riods = self._manager.acquire(needs_lock=False)
+            riods = self._manager.acquire()
             out = riods.read(band_key, window=window, masked=self._masked)
 
         if squeeze_axis:
@@ -338,11 +395,12 @@ class Raster(object):
         self._str = None
         self._lock = SerializableLock()
 
+        decode_times = open_kwargs.pop('decode_times', True)
+        decode_timedelta = open_kwargs.pop('decode_timedelta', None)
+
         with warnings.catch_warnings(record=True) as rio_warnings:
             manager = CachingFileManager(rasterio.open, self._fname,
-                                         lock=self._lock, mode="r",
-                                         kwargs=open_kwargs
-                                         )
+                                         mode="r", kwargs=open_kwargs)
             riods = manager.acquire()
             captured_warnings = rio_warnings.copy()
 
@@ -413,12 +471,42 @@ class Raster(object):
                                name=name,
                                masked=True)
         )
-        self._data = DataArray(data=data,
-                               dims=(coord_name, "y", "x"), coords=coords,
-                               attrs=attrs, name=name)
+        xa_data = DataArray(data=data,
+                            dims=(coord_name, "y", "x"), coords=coords,
+                            attrs=attrs, name=name)
+        _load_netcdf_attrs(riods.tags(), xa_data)
+        result = _decode_datetime_cf(xa_data, decode_times=decode_times,
+                                     decode_timedelta=decode_timedelta
+                                     )
+        self._data = result.isel({coord_name: np.array(tuple(map(lambda x: x -1,
+                                                                 self._bands)))})
         self._data.set_close(manager.close)
         self._name = name
         return
+
+    @classmethod
+    def from_dataarray(cls, data):
+        fname = data.encoding['source']
+        if len(data.shape) != 3:
+            raise RuntimeError("rioxarray Datasets should be 3-D")
+        try:
+            indexer = data.rio._get_obj(inplace=True)\
+                              ._variable._data.array.array.key
+            manager = data.rio._get_obj(inplace=True)\
+                              ._variable._data.array.array.array.manager
+        except AttributeError:
+            raise RuntimeError("Could not determine indexer for {data.name}")
+        slices = indexer.tuple
+        # FIXME: Assume time/band is index 0.
+        if slices[0].stop is None:
+            bands = np.asarray(range(data.rio.count))
+        else:
+            bands = np.asarray(range(slices[0].stop)[slices[0]])
+        ras = Raster(fname, (bands + 1).tolist(), decode_times=False,
+                     parse_coordinates=False, **manager._kwargs)
+        ras.coords = data.coords
+        ras.dims = data.dims
+        return ras
 
     @property
     def syms(self):
@@ -465,8 +553,6 @@ class Raster(object):
             obj = self
         else:
             obj = self.copy()
-        obj._block_shape = self._block_shape
-        obj._dtype = self._dtype
         obj._bounds = bounds
         win = round_window(rwindows.from_bounds(*bounds,
                                                 obj.transform))
@@ -503,6 +589,7 @@ class Raster(object):
         obj._fname = self._fname
         obj._lock = self._lock
         obj._manager = self._manager
+        obj._dtype = self._dtype
         obj._bounds = self._bounds
         obj._transform = self._transform
         obj._bands = self._bands
@@ -511,6 +598,7 @@ class Raster(object):
         obj._height = self._width
         obj._nodata = self._nodata
         obj._crs = self._crs
+        obj._block_shape = self._block_shape
         obj._chunks = self._chunks
         obj._name = self._name
         obj._data = self._data.copy()

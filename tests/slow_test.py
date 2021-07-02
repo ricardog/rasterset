@@ -11,6 +11,7 @@ from dask.distributed import Client
 
 import fiona
 import numpy as np
+import numpy.ma as ma
 from r2py import modelr
 from rasterset import RasterSet, Raster
 import rioxarray as rxr
@@ -68,8 +69,8 @@ def test_dask_luh2():
 
     rs["npp"] = Raster(f"{OUTDIR}/luh2/npp.tif")
     states = f"{DATA_ROOT}/luh2_v2/LUH2_v2f_SSP2_RCP4.5_MESSAGE-GLOBIOM/states.nc"
-    luh2 = rxr.open_rasterio(states, chunks="auto", decode_times=False)[0]
-    sps = rxr.open_rasterio(f"{OUTDIR}/luh2/sps.nc", chunks="auto",
+    luh2 = rxr.open_rasterio(states, lock=False, decode_times=False)[0]
+    sps = rxr.open_rasterio(f"{OUTDIR}/luh2/sps.nc", lock=False,
                             decode_timedelta=True,)
     sps = sps.sel(time=slice(datetime.datetime(2015, 1, 1),
                              datetime.datetime(2100, 1, 1)))
@@ -81,19 +82,21 @@ def test_dask_luh2():
     mod = modelr.load(f"{OUTDIR}/models/natgeo/cs_crop_simplemod.rds")
     rs["out"] = mod
 
-    client = get_client('')
-    print(f"Dashboard link: {client.dashboard_link}")
+    #client = get_client('')
+    #print(f"Dashboard link: {client.dashboard_link}")
     # TODO: Uploading the model file causes it to be recompiled by
     # numba.  Figure out how to conditionally upload if not present.
-    # client.upload_file(f"{OUTDIR}/models/natgeo/cs_crop_simplemod.py")
-    graph, meta = rs.build("out")
+    #client.upload_file(f"{OUTDIR}/models/natgeo/cs_crop_simplemod.py")
+    graph, meta = rs.build2("out")
     assert meta["width"] == 1436
     assert meta["height"] == 344
 
-    data = graph.compute()
+    data = graph.load()
     assert data.shape == (86, 344, 1436)
-    assert np.allclose(data.max(), 2.300597)
-    assert np.allclose(data.min(), -6.634878)
+    #import pdb; pdb.set_trace()
+    mdata = ma.masked_equal(data, data.attrs['_FillValue'])
+    assert np.allclose(mdata.max(), 2.300597)
+    assert np.allclose(mdata.min(), -6.634878)
 
     # Get data transfor information from the workers.
     # client.run(lambda dask_worker: dask_worker.outgoing_transfer_log)

@@ -297,7 +297,7 @@ class RastersetArrayWrapper(BackendArray):
 
         return band_key, tuple(window), tuple(squeeze_axis), tuple(np_inds)
 
-    def eval(self, key, window):
+    def eval(self, band_key, key, window):
         df = {}
         for idx, level in enumerate(self._levels):
             for name in level:
@@ -305,7 +305,8 @@ class RastersetArrayWrapper(BackendArray):
                     win = rwindows.Window.from_slices(
                         rows=window[0], cols=window[1],
                         height=self.shape[1], width=self.shape[2])
-                    mdata = self._columns[name].eval(win=win)
+                    data = self._columns[name].asarray()[key]
+                    mdata = ma.masked_equal(data, data.attrs['_FillValue'])
                     mdata.mask = mdata.mask | self._mask.mask[win.toslices()]
                     df[name] = mdata
                 else:
@@ -319,7 +320,8 @@ class RastersetArrayWrapper(BackendArray):
 
     def _getitem(self, key):
         band_key, window, squeeze_axis, np_inds = self._get_indexer(key)
-        out = self.eval(key, window)
+        # print(f"wrapper {self._name} processing window {band_key}: {window}")
+        out = self.eval(band_key, key, window)
 
         if squeeze_axis:
             out = np.squeeze(out, axis=squeeze_axis)
