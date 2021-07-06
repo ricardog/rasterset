@@ -1,3 +1,6 @@
+# Local files and directory
+dask-worker-space/
+
 # Emacs backup files
 *~
 
