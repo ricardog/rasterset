@@ -6,15 +6,17 @@ from pathlib import Path
 from pprint import pprint
 import pytest
 import re
+import time
 
-from dask.distributed import Client
-
+from dask.distributed import Client               # , performance_report
 import fiona
+from numcodecs import Zlib
 import numpy as np
 import numpy.ma as ma
 from r2py import modelr
 from rasterset import RasterSet, Raster
 import rioxarray as rxr
+import zarr
 
 """
 Run a multi-step projection using rasterset.
@@ -41,11 +43,10 @@ def get_client(addr=None):
         print(f"Scheduler: {addr}")
         client = Client(addr)
     pprint(client.ncores())
+    print(f"Dashboard link: {client.dashboard_link}")
     return client
 
-
-@pytest.mark.slow
-def test_dask_luh2():
+def setup_rasterset():
     shapes = fiona.open(Path(dir_path, "s_11au16"))
     rs = RasterSet(
         {
@@ -81,29 +82,71 @@ def test_dask_luh2():
     # mod = modelr.load("/mnt/predicts/models/natgeo/cs_crop_simplemod.rds")
     mod = modelr.load(f"{OUTDIR}/models/natgeo/cs_crop_simplemod.rds")
     rs["out"] = mod
+    return rs
 
-    #client = get_client('')
-    #print(f"Dashboard link: {client.dashboard_link}")
+
+@pytest.mark.slow
+def test_dask_luh2():
+    client = get_client(None)
     # TODO: Uploading the model file causes it to be recompiled by
     # numba.  Figure out how to conditionally upload if not present.
-    #client.upload_file(f"{OUTDIR}/models/natgeo/cs_crop_simplemod.py")
+    client.upload_file(f"{OUTDIR}/models/natgeo/cs_crop_simplemod.py")
+
+    rs = setup_rasterset()
     graph, meta = rs.build2("out")
-    assert meta["width"] == 1436
+    assert meta["width"] == 1437
     assert meta["height"] == 344
 
-    data = graph.load()
-    assert data.shape == (86, 344, 1436)
-    #import pdb; pdb.set_trace()
-    mdata = ma.masked_equal(data, data.attrs['_FillValue'])
+    # with performance_report(filename="dask-report.html"):
+    stime = time.perf_counter()
+    data = graph.compute()
+    etime = time.perf_counter()
+    print("executed in %6.3fs" % (etime - stime))
+
+    assert data.shape == (86, 344, 1437)
+    mdata = ma.masked_equal(data, graph.attrs['_FillValue'])
     assert np.allclose(mdata.max(), 2.300597)
     assert np.allclose(mdata.min(), -6.634878)
 
     # Get data transfor information from the workers.
     # client.run(lambda dask_worker: dask_worker.outgoing_transfer_log)
     # client.run(lambda dask_worker: dask_worker.incoming_transfer_log)
-    
+
     return
+
+
+@pytest.mark.slow
+def test_dask_zarr():
+    client = get_client(None)
+    # TODO: Uploading the model file causes it to be recompiled by
+    # numba.  Figure out how to conditionally upload if not present.
+    client.upload_file(f"{OUTDIR}/models/natgeo/cs_crop_simplemod.py")
+
+    rs = setup_rasterset()
+    graph, meta = rs.build2("out")
+
+    url = 'file://%s' % 'dummy.zarr'
+    store = zarr.storage.FSStore(url, mode='r+')
+    compressor = Zlib(level=7)
+    out = graph.data.to_zarr(store, compressor=compressor,
+                             component='scenario/CompSimAb',
+                             overwrite=True, compute=False,
+                             return_stored=True,
+                             fill_value=graph.attrs['_FillValue'])
+    data = out.compute()
+    assert data.shape == (86, 344, 1437)
+    mdata = ma.masked_equal(data, graph.attrs['_FillValue'])
+    assert np.allclose(mdata.max(), 2.300597)
+    assert np.allclose(mdata.min(), -6.634878)
+
+    cs = zarr.open(store, path='scenario/CompSimAb')
+    print(cs.info)
+    cs.attrs.update({'bounds': meta['bounds'],
+                     'transform': meta['transform'].to_gdal(),
+                     'crs': meta['crs'].to_wkt(),
+                     })
+    return
+
 
 if __name__ == '__main__':
     test_dask_luh2()
-

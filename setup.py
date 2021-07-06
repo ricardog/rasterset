@@ -41,6 +41,7 @@ setup(
     ],
     extras_require={
         "dev": ["black", "flake8", "pytest"],
-        "test": ["fiona"]
+        "test": ["fiona", "numcodecs", "zarr"]
+
     },
 )
