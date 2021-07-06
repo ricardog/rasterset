@@ -314,7 +314,7 @@ class RasterSet(object):
                            coords=wrapper.coords, attrs=ds.attrs, name=what)
         result.attrs['_FillValue'] = wrapper.fill_value
         token = tokenize(what, wrapper.chunks)
-        name_prefix = "rasterset-%s" % token
+        name_prefix = f"rasterset-{what}-{token}"
         return result.chunk(wrapper.chunks, name_prefix=name_prefix,
                             token=token), wrapper.meta()
 
