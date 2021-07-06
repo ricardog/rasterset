@@ -93,7 +93,7 @@ def test_dask_luh2():
     client.upload_file(f"{OUTDIR}/models/natgeo/cs_crop_simplemod.py")
 
     rs = setup_rasterset()
-    graph, meta = rs.build2("out")
+    graph, meta = rs.build("out")
     assert meta["width"] == 1437
     assert meta["height"] == 344
 
@@ -123,7 +123,7 @@ def test_dask_zarr():
     client.upload_file(f"{OUTDIR}/models/natgeo/cs_crop_simplemod.py")
 
     rs = setup_rasterset()
-    graph, meta = rs.build2("out")
+    graph, meta = rs.build("out")
 
     url = 'file://%s' % 'dummy.zarr'
     store = zarr.storage.FSStore(url, mode='r+')

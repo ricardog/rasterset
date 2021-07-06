@@ -17,7 +17,7 @@ def test_dask():
                     'c': SimpleExpr('ice + a + log(b)'),
                     },
                    )
-    array, meta = rs.build2('c')
+    array, meta = rs.build('c')
     assert meta['width'] == 1440
     assert meta['height'] == 720
     data = array.load()
@@ -39,7 +39,7 @@ def test_dask_mask():
                     },
                    shapes=shapes
                    )
-    array, meta = rs.build2('c')
+    array, meta = rs.build('c')
     assert meta['width'] == 1437
     assert meta['height'] == 344
     data = array.load()

@@ -263,47 +263,7 @@ class RasterSet(object):
         data[~namask] = df[ctx.what]
         return data
 
-    def _eval2(self, df, levels):
-        for idx, level in enumerate(levels):
-            if idx == 0:
-                continue
-            for name in level:
-                df[name] = self[name].eval(df)
-        return df
-
-    def meval(self, what, levels, names=None, *arrays, block_info=None):
-        print("in meval")
-        assert len(set([type(x) for x in arrays])) == 1
-        if block_info:
-            pprint(block_info[None])
-            pass
-        else:
-            return ma.empty_like(arrays[0])
-        df = dict([(name, arr.reshape(-1))
-                   for name, arr in zip(names, arrays)])
-        df, namask = self.dropna(df)
-        shape = arrays[0].shape
-        df = self._eval2(df, levels)
-        return self.reflate(namask, df[what]).reshape(shape)
-
-    def build_dataset(self, ctx, level_0):
-        df = {}
-        level_0 = list(level_0)
-        name = level_0.pop(0)
-        arr = self[name].reader
-        if ctx.mask.shapes is not None:
-            arr = arr.rio.clip(ctx.mask.shapes, self[name].crs, drop=False,
-                               from_disk=True)
-        ds = xa.Dataset({name: arr})
-        for name in level_0:
-            ds = ds.merge(xa.Dataset({name: self[name].reader.squeeze()}))
-        for name in ds.keys():
-            arr = ds[name].data
-            df[name] = da.ma.masked_equal(arr, ds[name].attrs['_FillValue'])
-        names, arrays = zip(*df.items())
-        return names, da.broadcast_arrays(*arrays)
-
-    def build2(self, what):
+    def build(self, what):
         wrapper = RastersetArrayWrapper(what, self, crop=self.crop,
                                         dtype=self.dtype)
         ds = wrapper.dataset()
@@ -317,15 +277,6 @@ class RasterSet(object):
         name_prefix = f"rasterset-{what}-{token}"
         return result.chunk(wrapper.chunks, name_prefix=name_prefix,
                             token=token), wrapper.meta()
-
-    def build(self, what):
-        ctx = EvalContext(self, what, crop=self.crop, bbox=self.bbox)
-        self.set_props(ctx)
-        # Compute partial order in which to evaluate rasters
-        levels = self.compute_order(what)
-        names, arrays = self.build_dataset(ctx, levels[0])
-        graph = da.map_blocks(self.meval, what, levels, names, *arrays)
-        return graph, ctx.meta()
 
     def eval(self, what, quiet=False, args={}):
         ctx = EvalContext(self, what, crop=self.crop, bbox=self.bbox)
