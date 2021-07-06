@@ -41,6 +41,12 @@ def _check_alignment(src):
     return xx and yy
 
 
+def _get_transform(left, bottom, right, top, res):
+    return (Affine.translation(left, top) *
+            Affine.scale(res[0], res[1]) *
+            Affine.identity())
+
+
 def _compute_order(needed, items):
     """Compute a partial ordering for evaluation of functions.  Checks for
     cycles in the graph as it does the work.
@@ -132,11 +138,11 @@ class RastersetArrayWrapper(BackendArray):
         if crop:
             self._bounds = bounds.intersection(self.bounds, self._mask.bounds)
 
+        # Round bounds to multiples of the resolution.
+        self._bounds = bounds.round(*self.bounds, res)
+
         # Set the affine transform and calculate mask.
-        self._transform = (Affine.translation(self.bounds.left,
-                                              self.bounds.top) *
-                           Affine.scale(res[0], res[1]) *
-                           Affine.identity())
+        self._transform = _get_transform(*self.bounds, res)
         self._mask.transform = self.transform
         self._mask.eval(self.bounds)
         self._dataset = Dataset()
@@ -235,6 +241,7 @@ class RastersetArrayWrapper(BackendArray):
                                    width=self.width,
                                    height=self.height,
                                    sparse_ok="YES",
+                                   bounds=self.bounds,
                                    )
         meta.update(args)
         return meta

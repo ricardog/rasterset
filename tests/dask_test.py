@@ -40,7 +40,7 @@ def test_dask_mask():
                    shapes=shapes
                    )
     array, meta = rs.build2('c')
-    assert meta['width'] == 1436
+    assert meta['width'] == 1437
     assert meta['height'] == 344
     data = array.load()
     if len(data.shape) == 3:
