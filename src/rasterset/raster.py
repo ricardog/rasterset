@@ -498,7 +498,9 @@ class Raster(object):
             raise RuntimeError("Could not determine indexer for {data.name}")
         slices = indexer.tuple
         # FIXME: Assume time/band is index 0.
-        if slices[0].stop is None:
+        if isinstance(slices[0], np.ndarray):
+            bands = slices[0]
+        elif slices[0].stop is None:
             bands = np.asarray(range(data.rio.count))
         else:
             bands = np.asarray(range(slices[0].stop)[slices[0]])
