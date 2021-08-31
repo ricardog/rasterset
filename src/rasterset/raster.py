@@ -461,7 +461,7 @@ class Raster(object):
         self._block_shape = (1,) + riods.block_shapes[0]
         self._chunks = normalize_chunks(
             chunks=(1, "auto", "auto"),
-            shape=(riods.count, riods.height, riods.width),
+            shape=(len(self._bands), riods.height, riods.width),
             dtype=riods.dtypes[0],
             previous_chunks=tuple((c,) for c in self._block_shape),
         )
