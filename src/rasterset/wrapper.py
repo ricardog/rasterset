@@ -1,3 +1,4 @@
+from decimal import Decimal
 from functools import reduce
 
 from affine import Affine
@@ -120,7 +121,9 @@ class RastersetArrayWrapper(BackendArray):
         if len(set(map(lambda src: src.crs, self._sources))) != 1:
             raise RuntimeError("All rasters must have the same CRS")
         self._crs = self._sources[0].crs
-        if len(set(map(lambda src: src.res, self._sources))) != 1:
+        if len(set(map(lambda src: (Decimal(src.res[0]).quantize(Decimal("0.0000001")),
+                               Decimal(src.res[0]).quantize(Decimal("0.0000001"))),
+                       self._sources))) != 1:
             raise RuntimeError("All rasters must have the same resolution")
         res = self._sources[0].res
 
